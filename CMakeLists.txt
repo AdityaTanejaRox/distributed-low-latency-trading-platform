@@ -20,6 +20,7 @@ add_library(llt_core
     src/exchange_gateway.cpp
     src/node.cpp
     src/threading.cpp
+    src/tcp_transport.cpp
 )
 
 target_include_directories(llt_core PUBLIC include)
@@ -55,3 +56,6 @@ target_link_libraries(simulator PRIVATE llt_core)
 
 add_executable(threaded_runtime apps/threaded_runtime.cpp)
 target_link_libraries(threaded_runtime PRIVATE llt_core)
+
+add_executable(tcp_transport_demo apps/tcp_transport_demo.cpp)
+target_link_libraries(tcp_transport_demo PRIVATE llt_core)
