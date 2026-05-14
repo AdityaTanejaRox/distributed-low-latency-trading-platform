@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.16)
 
 project(distributed_low_latency_trading_platform LANGUAGES CXX)
 
+find_package(Threads REQUIRED)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -17,9 +19,12 @@ add_library(llt_core
     src/oms.cpp
     src/exchange_gateway.cpp
     src/node.cpp
+    src/threading.cpp
 )
 
 target_include_directories(llt_core PUBLIC include)
+
+target_link_libraries(llt_core PUBLIC Threads::Threads)
 
 target_compile_options(llt_core PRIVATE
     -Wall
@@ -47,3 +52,6 @@ target_link_libraries(gateway_node PRIVATE llt_core)
 
 add_executable(simulator apps/simulator.cpp)
 target_link_libraries(simulator PRIVATE llt_core)
+
+add_executable(threaded_runtime apps/threaded_runtime.cpp)
+target_link_libraries(threaded_runtime PRIVATE llt_core)

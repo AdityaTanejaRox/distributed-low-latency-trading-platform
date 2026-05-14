@@ -620,17 +620,426 @@ Those are natural extensions.
 
 ## Suggested Extensions
 
-### Phase 1: Multi-Threaded Local Runtime
+---
 
-Run each component on a separate thread:
+## Phase 1: Multi-Threaded Local Runtime
 
-- Market data thread
-- Strategy thread
-- OMS thread
-- Gateway thread
+The original implementation executed the entire pipeline in a single thread:
 
-Pin each thread to a dedicated CPU core.
+```text
+Market Data -> Strategy -> OMS -> Gateway
+```
 
+While functionally correct, this does not resemble how low-latency systems operate in production.
+
+Real trading systems isolate independent stages onto dedicated threads and often dedicated CPU cores.
+
+Reasons include:
+
+- Reducing scheduler-induced latency
+- Preventing CPU migration
+- Improving cache locality
+- Isolating failures
+- Making latency deterministic
+- Minimizing tail latency
+
+This phase converts the local runtime from a single-threaded simulation into a CPU-pinned multi-threaded runtime.
+
+The architecture now becomes:
+
+```text
+CPU 0
+└── Main Runtime Thread
+
+CPU 0
+└── Market Data Thread
+        |
+        v
+
+CPU 1
+└── Strategy Thread
+        |
+        v
+
+CPU 2
+└── OMS Thread
+        |
+        v
+
+CPU 3
+└── Gateway Thread
+```
+
+Message flow remains:
+
+```text
+MarketData
+    →
+Strategy
+    →
+Signal
+    →
+OMS
+    →
+Order
+    →
+Gateway
+    →
+Ack/Reject
+    →
+OMS
+```
+
+The difference is that each stage now executes independently.
+
+Communication between threads uses bounded SPSC queues.
+
+---
+
+### Why Thread Pinning Matters
+
+Linux normally allows the scheduler to migrate threads across CPUs.
+
+Migration can cause:
+
+- L1 cache misses
+- L2 cache misses
+- TLB invalidation
+- scheduler jitter
+- NUMA effects
+- tail latency spikes
+
+For example:
+
+```text
+strategy thread
+CPU2 → CPU6 → CPU1 → CPU4
+```
+
+Each migration potentially destroys cache warmth.
+
+In low-latency systems this matters.
+
+Even small scheduling events can produce:
+
+```text
+p50 = 2μs
+p99 = 100μs
+```
+
+The average latency appears fine.
+
+Tail latency becomes terrible.
+
+Instead we pin threads:
+
+```cpp
+pin_current_thread_to_cpu(...)
+```
+
+using:
+
+```cpp
+pthread_setaffinity_np(...)
+```
+
+which guarantees:
+
+```text
+market data → CPU0
+strategy → CPU1
+OMS → CPU2
+gateway → CPU3
+```
+
+Now:
+
+- thread migration disappears
+- cache locality improves
+- latency becomes more deterministic
+
+---
+
+### Thread Naming
+
+Thread names are also assigned:
+
+```cpp
+pthread_setname_np(...)
+```
+
+Examples:
+
+```text
+llt-md
+llt-strategy
+llt-oms
+llt-gateway
+```
+
+These become visible in:
+
+```bash
+htop
+
+ps -L
+
+perf top
+
+/proc/<pid>/task
+```
+
+This makes runtime debugging significantly easier.
+
+---
+
+### Thread Responsibilities
+
+#### Market Data Thread
+
+Responsibilities:
+
+- generate synthetic market data
+- assign exchange sequence numbers
+- publish normalized messages
+- push into strategy queue
+
+CPU:
+
+```text
+CPU0
+```
+
+Queue:
+
+```cpp
+market_to_strategy
+```
+
+---
+
+#### Strategy Thread
+
+Responsibilities:
+
+- consume market data
+- maintain top-of-book state
+- generate signals
+- publish signals
+
+CPU:
+
+```text
+CPU1
+```
+
+Queue:
+
+```cpp
+strategy_to_oms
+```
+
+---
+
+#### OMS Thread
+
+Responsibilities:
+
+- receive signals
+- run risk checks
+- assign order IDs
+- track live orders
+- process acknowledgements
+- process rejects
+
+CPU:
+
+```text
+CPU2
+```
+
+Queues:
+
+```cpp
+strategy_to_oms
+gateway_to_oms
+oms_to_gateway
+```
+
+---
+
+#### Gateway Thread
+
+Responsibilities:
+
+- simulate exchange connectivity
+- send orders
+- return exchange responses
+
+CPU:
+
+```text
+CPU3
+```
+
+Queue:
+
+```cpp
+gateway_to_oms
+```
+
+---
+
+### Why SPSC Queues
+
+The topology is:
+
+```text
+single producer
+single consumer
+```
+
+Examples:
+
+```text
+market data thread
+        ↓
+strategy thread
+```
+
+Only one producer.
+
+Only one consumer.
+
+SPSC queues are ideal:
+
+Advantages:
+
+- no locks
+- no mutexes
+- no heap allocation
+- minimal cache contention
+- deterministic throughput
+
+Queue capacity remains bounded:
+
+```cpp
+constexpr BUS_CAPACITY = 1 << 14;
+```
+
+This prevents hidden latency accumulation.
+
+---
+
+### Runtime Verification
+
+I verified runtime thread pinning using:
+
+```bash
+ps -L -o pid,tid,psr,comm -p <PID>
+```
+
+Observed output:
+
+```text
+PID      TID     PSR   COMMAND
+
+73245    73245    0    threaded_runtim
+73245    73246    0    llt-md
+73245    73247    1    llt-strategy
+73245    73248    2    llt-oms
+73245    73249    3    llt-gateway
+```
+
+Interpretation:
+
+```text
+PSR = CPU currently executing thread
+```
+
+Verified mapping:
+
+```text
+llt-md          -> CPU0
+llt-strategy    -> CPU1
+llt-oms         -> CPU2
+llt-gateway     -> CPU3
+```
+
+This confirms Linux thread affinity works correctly.
+
+---
+
+### Runtime Sample Output
+
+Observed output:
+
+```json
+{"ts_ns":4934941350559,"level":"INFO","component":"strategy","message":"generated signal"}
+{"ts_ns":4934941382926,"level":"INFO","component":"oms","message":"accepted signal and created order"}
+
+{"ts_ns":4934952119531,"level":"INFO","component":"gateway","message":"sent order and produced exchange response"}
+
+{"ts_ns":4934952919975,"level":"INFO","component":"oms","message":"processed gateway ack"}
+
+{"ts_ns":4935067329600,"level":"INFO","component":"oms","message":"thread stopped"}
+
+{"ts_ns":4935067358064,"level":"INFO","component":"strategy","message":"thread stopped"}
+
+{"ts_ns":4935069320055,"level":"INFO","component":"gateway","message":"thread stopped"}
+
+{"ts_ns":4935074919978,"level":"INFO","component":"market_data","message":"thread stopped"}
+
+{"ts_ns":4948835690289,"level":"INFO","component":"threaded_runtime","message":"shutdown complete"}
+```
+
+This demonstrates:
+
+1. strategy generated signals
+
+2. OMS created orders
+
+3. gateway processed requests
+
+4. acknowledgements propagated back
+
+5. clean thread shutdown sequence occurred
+
+---
+
+### Design Tradeoffs
+
+Current design:
+
+Advantages:
+
+- deterministic thread ownership
+- bounded memory
+- cache locality
+- explicit runtime topology
+- no lock contention
+
+Limitations:
+
+- single process
+- in-process transport
+- no networking
+- no persistence
+- no replay
+
+The next phase replaces in-process queues with transport.
+
+---
+
+## Git Commit
+
+```bash
+git add .
+git commit -m "Phase 1: add CPU pinned multi-threaded runtime"
+git push
+```
+
+Phase 1 complete.
 ---
 
 ### Phase 2: TCP Node Transport
