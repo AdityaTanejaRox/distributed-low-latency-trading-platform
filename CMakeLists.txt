@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.16)
 project(distributed_low_latency_trading_platform LANGUAGES CXX)
 
 find_package(Threads REQUIRED)
+find_package(OpenSSL REQUIRED)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -22,11 +23,18 @@ add_library(llt_core
     src/threading.cpp
     src/tcp_transport.cpp
     src/journal.cpp
+    src/market_data_adapter.cpp
+    src/ws_client.cpp
+    src/live_market_data_connectors.cpp
 )
 
 target_include_directories(llt_core PUBLIC include)
 
-target_link_libraries(llt_core PUBLIC Threads::Threads)
+target_link_libraries(llt_core PUBLIC 
+    Threads::Threads
+    OpenSSL::SSL
+    OpenSSL::Crypto
+)
 
 target_compile_options(llt_core PRIVATE
     -Wall
@@ -63,3 +71,24 @@ target_link_libraries(tcp_transport_demo PRIVATE llt_core)
 
 add_executable(journal_demo apps/journal_demo.cpp)
 target_link_libraries(journal_demo PRIVATE llt_core)
+
+add_executable(market_data_adapter_demo apps/market_data_adapter_demo.cpp)
+target_link_libraries(market_data_adapter_demo PRIVATE llt_core)
+
+add_executable(binance_live_md apps/binance_live_md.cpp)
+target_link_libraries(binance_live_md PRIVATE llt_core)
+
+add_executable(coinbase_live_md apps/coinbase_live_md.cpp)
+target_link_libraries(coinbase_live_md PRIVATE llt_core)
+
+add_executable(hyperliquid_live_md apps/hyperliquid_live_md.cpp)
+target_link_libraries(hyperliquid_live_md PRIVATE llt_core)
+
+add_executable(itch_feed_generator apps/itch_feed_generator.cpp)
+target_link_libraries(itch_feed_generator PRIVATE llt_core)
+
+add_executable(itch_live_md apps/itch_live_md.cpp)
+target_link_libraries(itch_live_md PRIVATE llt_core)
+
+add_executable(live_market_data_runtime apps/live_market_data_runtime.cpp)
+target_link_libraries(live_market_data_runtime PRIVATE llt_core)

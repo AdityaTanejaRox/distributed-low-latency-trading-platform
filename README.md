@@ -2237,22 +2237,753 @@ Phase 3 complete.
 
 ---
 
-### Phase 4: Real Market Data Adapter
 
-Add a real market data connector.
+## Phase 4: Real Market Data Adapter and Live Streaming Pipeline
 
-Possible starting points:
+Phase 4 moves the platform from synthetic market data into live market data ingestion.
 
-- Binance book ticker WebSocket
-- Coinbase WebSocket
-- Polygon.io equities stream
-- Simulated ITCH-style feed
+This phase has two parts:
 
-Normalize external feed messages into `MarketDataUpdate`.
+```text
+Phase 4A: Venue normalization layer
+Phase 4B: Live market data connectors
+```
+
+The goal is:
+
+```text
+external venue message
+    →
+venue-specific parser
+    →
+normalized MarketDataUpdate
+    →
+internal TopOfBook
+    →
+strategy pipeline
+```
+
+This is a major step because the strategy layer no longer depends on fake hand-written market data.
+
+The system can now ingest real venue feeds and normalize them into the same internal representation.
 
 ---
 
-### Phase 5: Real Exchange Gateway
+#### Phase 4A: Normalization Layer
+
+Different venues expose different message formats.
+
+Examples:
+
+```text
+Binance bookTicker
+Coinbase ticker
+Hyperliquid l2Book
+ITCH-style quote feed
+```
+
+Each venue has different:
+
+- field names
+- symbol conventions
+- sequence models
+- price formats
+- quantity formats
+- channel names
+- payload nesting
+
+The purpose of the normalization layer is to hide those differences from the rest of the platform.
+
+The strategy should not care whether the data came from:
+
+```text
+Binance
+Coinbase
+Hyperliquid
+Simulated ITCH
+```
+
+The strategy only consumes:
+
+```cpp
+MarketDataUpdate
+```
+
+---
+
+#### Normalized Internal Format
+
+All venue feeds normalize into:
+
+```cpp
+struct MarketDataUpdate {
+    MessageHeader header;
+
+    SymbolId symbol_id;
+    Symbol symbol;
+
+    Price bid_px;
+    Quantity bid_qty;
+
+    Price ask_px;
+    Quantity ask_qty;
+
+    Sequence exchange_sequence;
+};
+```
+
+This gives the rest of the system one stable internal market data format.
+
+---
+
+#### Why Normalize Into Integer Prices?
+
+External venues usually send prices as strings or decimals:
+
+```json
+"81531.83"
+```
+
+The internal system stores prices as integer ticks:
+
+```text
+8153183
+```
+
+Example:
+
+```text
+81531.83 dollars
+    →
+8153183 cents/ticks
+```
+
+Reasons:
+
+- avoid floating point rounding
+- deterministic comparisons
+- faster arithmetic
+- stable serialization
+- easier replay
+- safer order price construction
+
+Trading systems generally avoid floating point in the order path.
+
+---
+
+#### Why Normalize Quantities Into Integer Units?
+
+Crypto venues often send fractional quantities:
+
+```json
+"0.243030"
+```
+
+The platform normalizes this to integer micro-units:
+
+```text
+243030
+```
+
+This preserves fractional sizes while keeping internal math integer-only.
+
+Example:
+
+```text
+0.243030 BTC
+    →
+243030 micro-units
+```
+
+This fixed the earlier issue where fractional crypto sizes were truncating to zero.
+
+---
+
+### Phase 4B: Live Market Data Connectors
+
+Phase 4B adds live connectors for:
+
+```text
+1. Binance live bookTicker WebSocket
+2. Coinbase live ticker WebSocket
+3. Hyperliquid live l2Book WebSocket
+4. Simulated ITCH-style TCP feed generator
+```
+
+The external WebSocket boundary uses Boost.Beast.
+
+After the raw venue frame is received, the system immediately converts it into internal `MarketDataUpdate`.
+
+---
+
+#### Why Boost.Beast?
+
+In Go and Rust, WebSocket support usually comes from common ecosystem packages.
+
+In C++, raw POSIX sockets are not enough for `wss://` feeds.
+
+A `wss://` connection requires:
+
+- TCP connection
+- TLS handshake
+- SNI hostname setup
+- HTTP upgrade handshake
+- WebSocket framing
+- masking
+- ping/pong handling
+- close frame handling
+- message fragmentation handling
+
+Boost.Beast handles the external WebSocket protocol correctly.
+
+The project still keeps the internal trading system deterministic:
+
+```text
+Boost.Beast WebSocket
+    →
+raw JSON text
+    →
+venue parser
+    →
+MarketDataUpdate
+    →
+internal queues/order book/strategy
+```
+
+Boost.Beast is only used at the external venue boundary.
+
+---
+
+#### Supported Live Venues
+
+### Binance
+
+Connector:
+
+```text
+binance_live_md
+```
+
+Stream:
+
+```text
+wss://data-stream.binance.vision/ws/btcusdt@bookTicker
+```
+
+Normalized fields:
+
+```text
+s  -> symbol
+u  -> exchange sequence
+b  -> best bid price
+B  -> best bid quantity
+a  -> best ask price
+A  -> best ask quantity
+```
+
+Output shape:
+
+```text
+venue=Binance symbol=BTCUSDT seq=... bid=... bid_qty=... ask=... ask_qty=...
+```
+
+---
+
+#### Coinbase
+
+Connector:
+
+```text
+coinbase_live_md
+```
+
+Stream:
+
+```text
+wss://ws-feed.exchange.coinbase.com
+```
+
+Subscription:
+
+```json
+{
+  "type": "subscribe",
+  "product_ids": ["BTC-USD"],
+  "channels": ["ticker"]
+}
+```
+
+Normalized fields:
+
+```text
+product_id       -> symbol
+sequence         -> exchange sequence
+best_bid         -> best bid price
+best_bid_size    -> best bid quantity
+best_ask         -> best ask price
+best_ask_size    -> best ask quantity
+```
+
+Output shape:
+
+```text
+venue=Coinbase symbol=BTC-USD seq=... bid=... bid_qty=... ask=... ask_qty=...
+```
+
+---
+
+#### Hyperliquid
+
+Connector:
+
+```text
+hyperliquid_live_md
+```
+
+Stream:
+
+```text
+wss://api.hyperliquid.xyz/ws
+```
+
+Subscription:
+
+```json
+{
+  "method": "subscribe",
+  "subscription": {
+    "type": "l2Book",
+    "coin": "BTC"
+  }
+}
+```
+
+Normalized top-of-book extraction:
+
+```text
+levels[0][0] -> best bid
+levels[1][0] -> best ask
+```
+
+Normalized fields:
+
+```text
+coin          -> symbol
+time          -> exchange sequence / event time
+bid px        -> best bid price
+bid sz        -> best bid quantity
+ask px        -> best ask price
+ask sz        -> best ask quantity
+```
+
+Output shape:
+
+```text
+venue=Hyperliquid symbol=BTC seq=... bid=... bid_qty=... ask=... ask_qty=...
+```
+
+---
+
+#### Simulated ITCH-Style Feed
+
+Live public ITCH feeds are usually not freely available without exchange data access.
+
+So this project includes a local TCP generator that emits ITCH-style quote lines.
+
+Generator:
+
+```text
+itch_feed_generator
+```
+
+Consumer:
+
+```text
+itch_live_md
+```
+
+Format:
+
+```text
+Q|sequence|symbol|bid_px|bid_qty|ask_px|ask_qty
+```
+
+Example:
+
+```text
+Q|1000|MSFT|42125|300|42126|400
+```
+
+Output shape:
+
+```text
+venue=SimulatedItch symbol=MSFT seq=1000 bid=42125 ask=42126
+```
+
+This allows the project to model sequence-heavy market data ingestion without requiring paid exchange data.
+
+---
+
+#### Continuous Streaming Mode
+
+Connectors now support:
+
+```text
+max_updates = 0
+```
+
+Meaning:
+
+```text
+stream forever until Ctrl+C or disconnect
+```
+
+This was important because a real market data connector should not stop after five messages.
+
+The connector binaries now continuously stream normalized updates.
+
+---
+
+#### Live Runtime Architecture
+
+Phase 4 also adds a live runtime:
+
+```text
+live_market_data_runtime
+```
+
+This connects live market data into the internal platform pipeline:
+
+```text
+Live WebSocket Feed
+    →
+Venue Normalizer
+    →
+TopOfBook
+    →
+MarketDataUpdate Queue
+    →
+StrategyEngine
+    →
+OMS
+    →
+Simulated Gateway
+    →
+Ack/Reject back to OMS
+```
+
+This proves the platform now has a real streaming data path.
+
+Phase 5 will replace the simulated gateway with testnet order submission.
+
+---
+
+#### How to Run
+
+Build:
+
+```bash
+cmake --build build -j
+```
+
+---
+
+#### Run Binance Live Connector
+
+```bash
+./build/binance_live_md
+```
+
+Stop:
+
+```bash
+Ctrl+C
+```
+
+---
+
+#### Run Coinbase Live Connector
+
+```bash
+./build/coinbase_live_md
+```
+
+Stop:
+
+```bash
+Ctrl+C
+```
+
+---
+
+#### Run Hyperliquid Live Connector
+
+```bash
+./build/hyperliquid_live_md
+```
+
+Stop:
+
+```bash
+Ctrl+C
+```
+
+---
+
+#### Run Simulated ITCH Feed
+
+Use two terminals.
+
+Terminal 1:
+
+```bash
+./build/itch_feed_generator
+```
+
+Terminal 2:
+
+```bash
+./build/itch_live_md
+```
+
+---
+
+#### Run Full Live Market Data Runtime
+
+Coinbase:
+
+```bash
+./build/live_market_data_runtime coinbase
+```
+
+Hyperliquid:
+
+```bash
+./build/live_market_data_runtime hyperliquid
+```
+
+Binance:
+
+```bash
+./build/live_market_data_runtime binance
+```
+
+Stop:
+
+```bash
+Ctrl+C
+```
+
+---
+
+#### Runtime Verification: Hyperliquid
+
+Observed output:
+
+```text
+aditya@singhm4  distributed-low-latency-trading-platform main!? 3s ➜ ./build/hyperliquid_live_md
+
+venue=Hyperliquid symbol=BTC seq=1778786785318 bid=8140300 bid_qty=647340 ask=8140400 ask_qty=42018620
+venue=Hyperliquid symbol=BTC seq=1778786785848 bid=8140300 bid_qty=647710 ask=8140400 ask_qty=33940390
+venue=Hyperliquid symbol=BTC seq=1778786786395 bid=8140300 bid_qty=647710 ask=8140400 ask_qty=32701640
+venue=Hyperliquid symbol=BTC seq=1778786786937 bid=8140300 bid_qty=647480 ask=8140400 ask_qty=32539490
+venue=Hyperliquid symbol=BTC seq=1778786787442 bid=8140300 bid_qty=991420 ask=8140400 ask_qty=32554760
+venue=Hyperliquid symbol=BTC seq=1778786787974 bid=8140300 bid_qty=991750 ask=8140400 ask_qty=32543800
+venue=Hyperliquid symbol=BTC seq=1778786788523 bid=8140300 bid_qty=1037390 ask=8140400 ask_qty=32543630
+venue=Hyperliquid symbol=BTC seq=1778786789081 bid=8140300 bid_qty=1037390 ask=8140400 ask_qty=36842600
+venue=Hyperliquid symbol=BTC seq=1778786789633 bid=8140300 bid_qty=1037200 ask=8140400 ask_qty=36016890
+venue=Hyperliquid symbol=BTC seq=1778786790174 bid=8140100 bid_qty=170 ask=8140400 ask_qty=52539600
+venue=Hyperliquid symbol=BTC seq=1778786790701 bid=8138600 bid_qty=6070 ask=8138700 ask_qty=8280500
+venue=Hyperliquid symbol=BTC seq=1778786791267 bid=8138600 bid_qty=1343720 ask=8138700 ask_qty=20942960
+venue=Hyperliquid symbol=BTC seq=1778786791802 bid=8138600 bid_qty=2405580 ask=8138700 ask_qty=16996600
+venue=Hyperliquid symbol=BTC seq=1778786792361 bid=8138600 bid_qty=4082170 ask=8138700 ask_qty=15886580
+venue=Hyperliquid symbol=BTC seq=1778786792893 bid=8138600 bid_qty=4161880 ask=8138700 ask_qty=14977440
+venue=Hyperliquid symbol=BTC seq=1778786793440 bid=8138600 bid_qty=976580 ask=8138700 ask_qty=17806170
+venue=Hyperliquid symbol=BTC seq=1778786794000 bid=8138600 bid_qty=4454390 ask=8138700 ask_qty=13494000
+venue=Hyperliquid symbol=BTC seq=1778786794562 bid=8138600 bid_qty=4515900 ask=8138700 ask_qty=13495820
+venue=Hyperliquid symbol=BTC seq=1778786795105 bid=8138600 bid_qty=4163510 ask=8138700 ask_qty=13248000
+venue=Hyperliquid symbol=BTC seq=1778786795655 bid=8138600 bid_qty=4163510 ask=8138700 ask_qty=13248000
+venue=Hyperliquid symbol=BTC seq=1778786796193 bid=8138600 bid_qty=4166340 ask=8138700 ask_qty=13235730
+venue=Hyperliquid symbol=BTC seq=1778786796740 bid=8138600 bid_qty=4166340 ask=8138700 ask_qty=13111020
+venue=Hyperliquid symbol=BTC seq=1778786797289 bid=8138600 bid_qty=4166340 ask=8138700 ask_qty=11743740
+venue=Hyperliquid symbol=BTC seq=1778786797817 bid=8138600 bid_qty=1054210 ask=8138700 ask_qty=13135560
+venue=Hyperliquid symbol=BTC seq=1778786798338 bid=8138600 bid_qty=4689320 ask=8138700 ask_qty=13135420
+venue=Hyperliquid symbol=BTC seq=1778786798897 bid=8138600 bid_qty=3760260 ask=8138700 ask_qty=13126480
+venue=Hyperliquid symbol=BTC seq=1778786799449 bid=8138600 bid_qty=3616450 ask=8138700 ask_qty=13124150
+venue=Hyperliquid symbol=BTC seq=1778786799984 bid=8138600 bid_qty=1860250 ask=8138700 ask_qty=13124150
+venue=Hyperliquid symbol=BTC seq=1778786800532 bid=8138600 bid_qty=2192880 ask=8138700 ask_qty=13124150
+venue=Hyperliquid symbol=BTC seq=1778786801059 bid=8138600 bid_qty=2291860 ask=8138700 ask_qty=13124150
+^C
+```
+
+This verifies:
+
+- live Hyperliquid WebSocket connectivity
+- l2Book subscription
+- top-of-book extraction
+- normalized price ticks
+- normalized quantity micro-units
+- continuous streaming
+
+---
+
+#### Runtime Verification: Coinbase
+
+Observed output:
+
+```text
+venue=Coinbase symbol=BTC-USD seq=128173992890 bid=8146648 bid_qty=243030 ask=8146649 ask_qty=305656
+venue=Coinbase symbol=BTC-USD seq=128173992893 bid=8146648 bid_qty=147 ask=8146649 ask_qty=305656
+venue=Coinbase symbol=BTC-USD seq=128173992895 bid=8146648 bid_qty=16 ask=8146649 ask_qty=305656
+venue=Coinbase symbol=BTC-USD seq=128173992897 bid=8145966 bid_qty=3879 ask=8146649 ask_qty=305656
+venue=Coinbase symbol=BTC-USD seq=128173994132 bid=8145576 bid_qty=13 ask=8145577 ask_qty=74220
+venue=Coinbase symbol=BTC-USD seq=128173994487 bid=8145576 bid_qty=27 ask=8145577 ask_qty=192452
+venue=Coinbase symbol=BTC-USD seq=128173994489 bid=8145301 bid_qty=36847 ask=8145577 ask_qty=192452
+venue=Coinbase symbol=BTC-USD seq=128173994491 bid=8145301 bid_qty=36689 ask=8145577 ask_qty=192452
+venue=Coinbase symbol=BTC-USD seq=128173994581 bid=8145412 bid_qty=86759 ask=8145488 ask_qty=7360
+venue=Coinbase symbol=BTC-USD seq=128173994965 bid=8145412 bid_qty=676353 ask=8145425 ask_qty=3680
+venue=Coinbase symbol=BTC-USD seq=128173995187 bid=8145412 bid_qty=676369 ask=8145413 ask_qty=132329
+venue=Coinbase symbol=BTC-USD seq=128173995388 bid=8145412 bid_qty=589610 ask=8145413 ask_qty=128360
+venue=Coinbase symbol=BTC-USD seq=128173995539 bid=8145412 bid_qty=589610 ask=8145413 ask_qty=122538
+venue=Coinbase symbol=BTC-USD seq=128173996117 bid=8145412 bid_qty=589610 ask=8145413 ask_qty=262538
+venue=Coinbase symbol=BTC-USD seq=128173996378 bid=8145412 bid_qty=589610 ask=8145413 ask_qty=226760
+venue=Coinbase symbol=BTC-USD seq=128173996722 bid=8145412 bid_qty=589610 ask=8145413 ask_qty=275559
+venue=Coinbase symbol=BTC-USD seq=128173997048 bid=8145412 bid_qty=589571 ask=8145413 ask_qty=261538
+venue=Coinbase symbol=BTC-USD seq=128173997050 bid=8145412 bid_qty=588690 ask=8145413 ask_qty=261538
+venue=Coinbase symbol=BTC-USD seq=128173997169 bid=8145412 bid_qty=588729 ask=8145413 ask_qty=261538
+venue=Coinbase symbol=BTC-USD seq=128173997496 bid=8145412 bid_qty=588729 ask=8145413 ask_qty=261538
+venue=Coinbase symbol=BTC-USD seq=128173997498 bid=8145412 bid_qty=588729 ask=8145413 ask_qty=261420
+venue=Coinbase symbol=BTC-USD seq=128173997652 bid=8145412 bid_qty=588729 ask=8145413 ask_qty=261420
+venue=Coinbase symbol=BTC-USD seq=128173997702 bid=8145412 bid_qty=588729 ask=8145413 ask_qty=261355
+venue=Coinbase symbol=BTC-USD seq=128173997832 bid=8145412 bid_qty=588729 ask=8145413 ask_qty=260579
+venue=Coinbase symbol=BTC-USD seq=128173998097 bid=8145412 bid_qty=648667 ask=8145413 ask_qty=260579
+venue=Coinbase symbol=BTC-USD seq=128173998114 bid=8145412 bid_qty=646867 ask=8145413 ask_qty=260579
+venue=Coinbase symbol=BTC-USD seq=128173998259 bid=8145412 bid_qty=646867 ask=8145413 ask_qty=264871
+venue=Coinbase symbol=BTC-USD seq=128173998313 bid=8145412 bid_qty=646867 ask=8145413 ask_qty=264528
+venue=Coinbase symbol=BTC-USD seq=128173998363 bid=8145412 bid_qty=646866 ask=8145413 ask_qty=264528
+venue=Coinbase symbol=BTC-USD seq=128173998366 bid=8145412 bid_qty=536480 ask=8145413 ask_qty=264528
+venue=Coinbase symbol=BTC-USD seq=128173998375 bid=8145412 bid_qty=60055 ask=8145413 ask_qty=264528
+venue=Coinbase symbol=BTC-USD seq=128173998377 bid=8145412 bid_qty=60039 ask=8145413 ask_qty=264528
+venue=Coinbase symbol=BTC-USD seq=128173998379 bid=8145412 bid_qty=60000 ask=8145413 ask_qty=264528
+venue=Coinbase symbol=BTC-USD seq=128173998381 bid=8145412 bid_qty=0 ask=8145413 ask_qty=264528
+venue=Coinbase symbol=BTC-USD seq=128173998536 bid=8145412 bid_qty=589610 ask=8145413 ask_qty=264528
+venue=Coinbase symbol=BTC-USD seq=128173998538 bid=8145412 bid_qty=589571 ask=8145413 ask_qty=264528
+venue=Coinbase symbol=BTC-USD seq=128173998540 bid=8145412 bid_qty=589566 ask=8145413 ask_qty=264528
+^C
+```
+
+This verifies:
+
+- live Coinbase WebSocket connectivity
+- ticker subscription
+- bid/ask normalization
+- fractional quantity scaling
+- continuous streaming
+- valid internal top-of-book representation
+
+---
+
+#### Runtime Verification: Binance
+
+Observed behavior:
+
+```text
+Binance streamed continuously until Ctrl+C.
+```
+
+The Binance connector was fixed to use:
+
+```text
+wss://data-stream.binance.vision/ws/btcusdt@bookTicker
+```
+
+instead of the earlier endpoint that failed.
+
+This verifies:
+
+- Binance WebSocket connectivity
+- public market-data-only endpoint usage
+- continuous bookTicker stream
+- normalized `MarketDataUpdate` flow
+
+---
+
+#### Runtime Verification: Simulated ITCH
+
+Observed behavior:
+
+```text
+venue=SimulatedItch symbol=MSFT seq=1000 bid=42125 ask=42126
+venue=SimulatedItch symbol=MSFT seq=1001 bid=42126 ask=42127
+venue=SimulatedItch symbol=MSFT seq=1002 bid=42127 ask=42128
+...
+```
+
+This verifies:
+
+- local TCP feed generation
+- sequence-heavy ITCH-style quote ingestion
+- line framing
+- normalization into `MarketDataUpdate`
+
+---
+
+#### What Phase 4 Proves
+
+Phase 4 proves the system can now ingest and normalize real live market data.
+
+The platform now supports:
+
+| Venue | Feed Type | Status |
+|---|---|---|
+| Binance | Live WebSocket bookTicker | ✅ |
+| Coinbase | Live WebSocket ticker | ✅ |
+| Hyperliquid | Live WebSocket l2Book | ✅ |
+| Simulated ITCH | Local TCP quote feed | ✅ |
+
+It also proves:
+
+- external venue feeds can be parsed
+- venue data can be normalized
+- normalized updates use integer prices
+- normalized updates use integer quantities
+- continuous streaming works
+- the internal strategy pipeline can consume live market data
+- feed handlers are now separated from strategy logic
+
+---
+
+#### Current Limitations
+
+This phase uses top-of-book normalization.
+
+It does not yet maintain a full depth order book.
+
+For full depth, future extensions should add:
+
+- per-price-level book maps
+- sequence gap detection
+- snapshot recovery
+- incremental depth updates
+- venue-specific order book reconstruction
+- stale book detection
+- cross-venue book aggregation
+
+For Phase 4, top-of-book is sufficient because the current strategy consumes:
+
+```text
+best bid
+best ask
+spread
+```
+
+---
+
+Phase 4 is complete.
+
+---
+
+## Phase 5: Real Exchange Gateway
 
 Add an exchange gateway.
 
