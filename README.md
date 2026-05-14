@@ -1027,19 +1027,11 @@ Limitations:
 - no persistence
 - no replay
 
-The next phase replaces in-process queues with transport.
-
----
-
-## Git Commit
-
-```bash
-git add .
-git commit -m "Phase 1: add CPU pinned multi-threaded runtime"
-git push
-```
 
 Phase 1 complete.
+
+The next phase replaces in-process queues with transport.
+
 ---
 
 ### Phase 2: TCP Node Transport

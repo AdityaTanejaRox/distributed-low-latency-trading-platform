@@ -272,6 +272,8 @@ int main()
     std::signal(SIGINT, handle_signal);
     std::signal(SIGTERM, handle_signal);
 
+    start_async_logger("logs/threaded_runtime.log");
+
     log(LogLevel::Info, "threaded_runtime", "starting phase 1 CPU-pinned multi-threaded runtime");
 
     LocalBus bus;
@@ -292,5 +294,8 @@ int main()
     gateway.join();
 
     log(LogLevel::Info, "threaded_runtime", "shutdown complete");
+
+    stop_async_logger();
+    
     return 0;
 }
