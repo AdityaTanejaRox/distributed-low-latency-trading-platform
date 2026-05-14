@@ -696,7 +696,7 @@ Communication between threads uses bounded SPSC queues.
 
 ---
 
-### Why Thread Pinning Matters
+#### Why Thread Pinning Matters
 
 Linux normally allows the scheduler to migrate threads across CPUs.
 
@@ -760,7 +760,7 @@ Now:
 
 ---
 
-### Thread Naming
+#### Thread Naming
 
 Thread names are also assigned:
 
@@ -793,7 +793,7 @@ This makes runtime debugging significantly easier.
 
 ---
 
-### Thread Responsibilities
+#### Thread Responsibilities
 
 #### Market Data Thread
 
@@ -890,7 +890,7 @@ gateway_to_oms
 
 ---
 
-### Why SPSC Queues
+#### Why SPSC Queues
 
 The topology is:
 
@@ -931,7 +931,7 @@ This prevents hidden latency accumulation.
 
 ---
 
-### Runtime Verification
+#### Runtime Verification
 
 I verified runtime thread pinning using:
 
@@ -970,7 +970,7 @@ This confirms Linux thread affinity works correctly.
 
 ---
 
-### Runtime Sample Output
+#### Runtime Sample Output
 
 Observed output:
 
@@ -1007,7 +1007,7 @@ This demonstrates:
 
 ---
 
-### Design Tradeoffs
+#### Design Tradeoffs
 
 Current design:
 
@@ -1034,11 +1034,7 @@ The next phase replaces in-process queues with transport.
 
 ---
 
-### Phase 2: TCP Node Transport
-
----
-
-# Phase 2: TCP Binary Transport Layer
+## Phase 2: TCP Binary Transport Layer
 
 Phase 1 established a deterministic multi-threaded local runtime.
 
@@ -1097,7 +1093,7 @@ the transport boundary is now real.
 
 ---
 
-# Why TCP Framing Matters
+#### Why TCP Framing Matters
 
 TCP is NOT a message protocol.
 
@@ -1158,7 +1154,7 @@ This phase implements exactly that.
 
 ---
 
-# Transport Design
+#### Transport Design
 
 We implement a custom binary framed transport.
 
@@ -1206,7 +1202,7 @@ Each payload is fixed-size binary data.
 
 ---
 
-# Why Binary Protocols?
+#### Why Binary Protocols?
 
 We intentionally avoid:
 
@@ -1220,7 +1216,7 @@ on the hot path.
 
 Reasons:
 
-## JSON Problems
+#### JSON Problems
 
 JSON introduces:
 
@@ -1260,7 +1256,7 @@ because they are:
 
 ---
 
-# Why Not Coroutines/Futures/Promises?
+#### Why Not Coroutines/Futures/Promises?
 
 We explicitly avoid:
 
@@ -1391,7 +1387,7 @@ Only after all bytes arrive can the frame be parsed safely.
 
 ---
 
-# Checksums
+#### Checksums
 
 Each payload includes:
 
@@ -1422,7 +1418,7 @@ Only integrity-oriented.
 
 ---
 
-# Message Flow
+#### Message Flow
 
 Phase 2 demo topology:
 
@@ -1458,7 +1454,7 @@ OMS
 
 ---
 
-# Process Topology
+#### Process Topology
 
 Current topology:
 
@@ -1488,7 +1484,7 @@ without redesigning protocol logic.
 
 ---
 
-# CPU Pinning
+#### CPU Pinning
 
 Threads remain pinned.
 
@@ -1503,7 +1499,7 @@ This preserves deterministic scheduling behavior.
 
 ---
 
-# Runtime Verification
+#### Runtime Verification
 
 Observed output:
 
@@ -1537,7 +1533,7 @@ aditya@singhm4  distributed-low-latency-trading-platform main!? ➜ tail -n 30 l
 
 ---
 
-## What This Phase Demonstrates
+#### What This Phase Demonstrates
 
 Phase 2 demonstrates:
 
@@ -1556,9 +1552,9 @@ Phase 2 demonstrates:
 
 ---
 
-### Important Design Decisions
+#### Important Design Decisions
 
-### Why Loopback TCP?
+#### Why Loopback TCP?
 
 Using:
 
@@ -1580,7 +1576,7 @@ This is ideal for incremental development.
 
 ---
 
-### Why Explicit Framing Instead of Delimiters?
+#### Why Explicit Framing Instead of Delimiters?
 
 We avoid:
 
@@ -1599,7 +1595,7 @@ Length-prefixed binary framing is the standard approach.
 
 ---
 
-### Why Not UDP Yet?
+#### Why Not UDP Yet?
 
 UDP market data often comes BEFORE order transport.
 
@@ -1625,7 +1621,7 @@ market data feed handlers
 
 ---
 
-## Current Limitations
+#### Current Limitations
 
 Still missing:
 
@@ -1640,7 +1636,7 @@ Still missing:
 
 These come later.
 
-## Runtime Verification
+#### Runtime Verification
 
 Observed output after adding:
 
@@ -1716,11 +1712,11 @@ aditya@singhm4  distributed-low-latency-trading-platform main!? ➜ tail -n 50 l
 
 ---
 
-## What This Runtime Output Proves
+#### What This Runtime Output Proves
 
 The runtime verifies:
 
-### 1. TCP Server Initialization
+#### 1. TCP Server Initialization
 
 ```text
 tcp_server listening on loopback TCP port
@@ -1734,7 +1730,7 @@ The gateway transport layer successfully bound and listened on:
 
 ---
 
-### 2. OMS-to-Gateway TCP Connectivity
+#### 2. OMS-to-Gateway TCP Connectivity
 
 ```text
 tcp_client connected to TCP server
@@ -1750,7 +1746,7 @@ This confirms:
 
 ---
 
-### 3. Binary Framed Message Transmission
+#### 3. Binary Framed Message Transmission
 
 ```text
 tcp_oms sent NewOrder over TCP
@@ -1767,7 +1763,7 @@ This proves:
 
 ---
 
-### 4. Exchange Response Path
+#### 4. Exchange Response Path
 
 ```text
 tcp_gateway sent Ack/Reject over TCP
@@ -1782,7 +1778,7 @@ This confirms:
 
 ---
 
-### 5. Heartbeat Liveness Protocol
+#### 5. Heartbeat Liveness Protocol
 
 ```text
 heartbeat sent heartbeat
@@ -1805,7 +1801,7 @@ This becomes critical later for:
 
 ---
 
-### 6. CPU Affinity Verification
+#### 6. CPU Affinity Verification
 
 ```text
 thread pinned to requested CPU core
@@ -1821,7 +1817,7 @@ This minimizes:
 
 ---
 
-### 7. Async Logger Stability
+#### 7. Async Logger Stability
 
 ```text
 logger stopped; dropped_logs=0
@@ -1835,7 +1831,7 @@ This confirms:
 
 ---
 
-## Distributed Systems Properties Achieved
+#### Distributed Systems Properties Achieved
 
 At the end of Phase 2, the platform now supports:
 
@@ -1857,20 +1853,387 @@ Phase 2 complete.
 
 ---
 
-### Phase 3: Persistent OMS Journal
+## Phase 3: Persistent OMS Journal
 
-The OMS should persist order intent before sending to the gateway.
+#### Runtime Verification
 
-This allows recovery after crash.
+Observed runtime:
 
-The journal should contain:
+```text
+aditya@singhm4  distributed-low-latency-trading-platform main!? 1m55s ➜ ./build/journal_demo
 
-- New order intent
-- Cancel intent
-- Ack
-- Reject
-- Fill
-- Cancel confirmation
+aditya@singhm4  distributed-low-latency-trading-platform main!? ➜ tail -n 50 logs/journal_demo.log
+
+{"ts_ns":10390751259054,"level":"INFO","component":"journal_demo","message":"starting phase 3 journal demo"}
+
+{"ts_ns":10390758251786,"level":"INFO","component":"journal","message":"opened journal file"}
+
+{"ts_ns":10390758300127,"level":"INFO","component":"journal","message":"appended journal record"}
+
+{"ts_ns":10390758300730,"level":"INFO","component":"journal_demo","message":"journaled order intent before gateway send"}
+
+{"ts_ns":10390758320185,"level":"INFO","component":"journal","message":"appended journal record"}
+
+{"ts_ns":10390758320416,"level":"INFO","component":"journal_demo","message":"journaled gateway ack"}
+
+{"ts_ns":10390758340251,"level":"INFO","component":"journal","message":"closed journal file"}
+
+{"ts_ns":10390758562757,"level":"INFO","component":"journal_demo","message":"OrderIntent"}
+
+{"ts_ns":10390758563067,"level":"INFO","component":"journal_demo","message":"GatewayAck"}
+
+{"ts_ns":10390758563209,"level":"INFO","component":"journal_demo","message":"phase 3 journal demo complete"}
+
+{"ts_ns":10390759320550,"level":"INFO","component":"logger","message":"logger stopped; dropped_logs=0"}
+
+aditya@singhm4  distributed-low-latency-trading-platform main!? ➜ ls -lh journals
+
+total 5.0K
+-rw-rw-r-- 1 aditya aditya 204 May 14 12:15 oms_journal_demo.bin
+```
+
+---
+
+#### What This Runtime Output Proves
+
+Phase 3 proves that the OMS now has a durable recovery boundary.
+
+This is one of the most important architectural transitions in the entire system.
+
+The platform is no longer purely in-memory.
+
+The OMS can now persist trading intent before external side effects occur.
+
+---
+
+#### OMS Durability Boundary
+
+The most important event in the runtime:
+
+```text
+journaled order intent before gateway send
+```
+
+This is critical.
+
+The sequence is now:
+
+```text
+strategy signal
+    →
+OMS creates NewOrder
+    →
+OMS journals OrderIntent
+    →
+gateway send occurs
+```
+
+NOT:
+
+```text
+gateway send
+    →
+journal later
+```
+
+Why?
+
+Because if the process crashes after gateway send but before journaling:
+
+```text
+exchange may have live order
+OMS forgets order existed
+```
+
+This creates catastrophic recovery ambiguity.
+
+The correct ordering is:
+
+```text
+persist intent first
+external side effect second
+```
+
+This is one of the fundamental principles of reliable trading infrastructure.
+
+---
+
+#### Journal Lifecycle Verification
+
+Observed lifecycle:
+
+```text
+opened journal file
+appended journal record
+closed journal file
+```
+
+This confirms:
+
+- journal initialization
+- append-only binary writes
+- durable flush path
+- clean shutdown behavior
+
+---
+
+#### Binary Record Persistence
+
+Observed:
+
+```text
+appended journal record
+```
+
+twice.
+
+This corresponds to:
+
+```text
+OrderIntent
+GatewayAck
+```
+
+The binary journal now stores:
+
+```text
+1. OMS trading intent
+2. exchange acknowledgement
+```
+
+This creates the foundation for:
+
+- deterministic replay
+- crash recovery
+- post-trade audit
+- order lifecycle reconstruction
+- compliance reconstruction
+- exchange reconciliation
+
+---
+
+#### Journal Replay Verification
+
+Observed:
+
+```text
+OrderIntent
+GatewayAck
+```
+
+These messages were NOT generated live.
+
+They were reconstructed by:
+
+```cpp
+JournalReader::read_all()
+```
+
+which:
+
+1. opened the binary journal
+2. parsed framed records
+3. validated checksums
+4. reconstructed Envelope payloads
+5. replayed journal state
+
+This proves:
+
+```text
+persisted OMS state can be recovered
+```
+
+which is one of the defining characteristics of a real trading platform.
+
+---
+
+#### Journal File Verification
+
+Observed:
+
+```text
+-rw-rw-r-- 1 aditya aditya 204 May 14 12:15 oms_journal_demo.bin
+```
+
+This confirms:
+
+- binary journal file creation
+- persistent filesystem durability
+- compact binary encoding
+
+The journal currently occupies:
+
+```text
+204 bytes
+```
+
+because payloads are fixed-size binary structs rather than verbose text formats.
+
+---
+
+#### Why Append-Only Journals Matter
+
+We intentionally use:
+
+```text
+append-only binary log
+```
+
+instead of:
+
+```text
+mutable database rows
+```
+
+Append-only logs are easier to reason about during failure recovery.
+
+Advantages:
+
+- deterministic ordering
+- immutable history
+- sequential disk writes
+- easier replay
+- easier corruption detection
+- lower write amplification
+
+Most serious trading systems internally rely on some form of:
+
+```text
+append-only event journal
+```
+
+even if hidden behind higher-level abstractions.
+
+---
+
+#### Checksums
+
+Each journal record contains:
+
+```cpp
+checksum
+```
+
+Observed behavior:
+
+```text
+JournalReader validates checksum before replay
+```
+
+This detects:
+
+- partial writes
+- corrupted records
+- truncated files
+- invalid payload interpretation
+
+The reader stops replay at the first invalid record.
+
+This is important because crashes can occur mid-write.
+
+---
+
+#### Current Journal Tradeoffs
+
+Current implementation:
+
+```text
+flush after every append
+```
+
+Advantages:
+
+- strong durability
+- simple correctness model
+- easy recovery semantics
+
+Tradeoff:
+
+```text
+higher latency
+```
+
+Production systems usually evolve toward:
+
+- batched flushes
+- dedicated journal threads
+- mmap journals
+- O_DIRECT
+- replication
+- NVMe optimized writes
+- battery-backed write caches
+
+But the current design is architecturally correct.
+
+Correctness first.
+
+Optimization later.
+
+---
+
+#### Distributed Systems Properties Achieved
+
+At the end of Phase 3, the platform now supports:
+
+| Capability | Status |
+|---|---|
+| Multi-threaded runtime 
+| CPU affinity 
+| Binary TCP framing 
+| Checksums 
+| Sequence numbers 
+| Async logging 
+| Heartbeats 
+| Reconnect framework 
+| Backpressure framework 
+| Persistent OMS journal 
+| Binary replayable records 
+| Append-only durability 
+| Deterministic recovery foundation 
+
+The system is now beginning to resemble a true trading infrastructure platform instead of a pure messaging demo.
+
+---
+
+#### Why Phase 3 Matters So Much
+
+Phase 1 introduced:
+
+```text
+runtime topology
+```
+
+Phase 2 introduced:
+
+```text
+distributed transport
+```
+
+Phase 3 introduces:
+
+```text
+durability
+```
+
+Durability is what transforms a transient runtime into a recoverable system.
+
+Without durability:
+
+```text
+process crash = state loss
+```
+
+With journaling:
+
+```text
+process crash != information loss
+```
+
+That distinction is enormous in trading systems.
+
+---
+
+Phase 3 complete.
 
 ---
 

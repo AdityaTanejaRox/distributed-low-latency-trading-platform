@@ -5,6 +5,7 @@
 #include "llt/strategy.hpp"
 #include "llt/threading.hpp"
 #include "llt/time.hpp"
+#include "llt/journal.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -167,6 +168,10 @@ void oms_thread(LocalBus& bus)
         }
     };
 
+    JournalWriter journal{"journals/threaded_runtime_oms.bin"};
+    Sequence journal_sequence = 0;
+    journal.open();
+
     while (g_running.load(std::memory_order_acquire)) 
     {
         bool did_work = false;
@@ -182,11 +187,19 @@ void oms_thread(LocalBus& bus)
 
                 if (maybe_order) 
                 {
-                    if (maybe_order->type == MsgType::NewOrder) {
+                    if (maybe_order->type == MsgType::NewOrder) 
+                    {
+                        journal.append(
+                            JournalRecordType::OrderIntent,
+                            *maybe_order,
+                            ++journal_sequence
+                        );
+
                         if (!bus.oms_to_gateway.push(*maybe_order)) 
                         {
                             log(LogLevel::Warn, "oms", "oms_to_gateway queue full; dropped order");
                         } 
+
                         else 
                         {
                             log(LogLevel::Info, "oms", "accepted signal and created order");
@@ -207,13 +220,33 @@ void oms_thread(LocalBus& bus)
 
             if (maybe_gateway_msg->type == MsgType::Ack) 
             {
+                journal.append(
+                    JournalRecordType::GatewayAck,
+                    *maybe_gateway_msg,
+                    ++journal_sequence
+                );
                 oms.on_gateway_ack(maybe_gateway_msg->payload.ack);
                 log(LogLevel::Info, "oms", "processed gateway ack");
+                // journal.append(
+                //     JournalRecordType::GatewayAck,
+                //     *maybe_gateway_msg,
+                //     ++journal_sequence
+                // );
             } 
             else if (maybe_gateway_msg->type == MsgType::Reject) 
             {
+                journal.append(
+                    JournalRecordType::GatewayReject,
+                    *maybe_gateway_msg,
+                    ++journal_sequence
+                );
                 oms.on_gateway_reject(maybe_gateway_msg->payload.reject);
-                log(LogLevel::Warn, "oms", "processed gateway reject");
+                // log(LogLevel::Warn, "oms", "processed gateway reject");
+                //                 journal.append(
+                //     JournalRecordType::GatewayReject,
+                //     *maybe_gateway_msg,
+                //     ++journal_sequence
+                // );
             }
         }
 
@@ -224,6 +257,7 @@ void oms_thread(LocalBus& bus)
     }
 
     log(LogLevel::Info, "oms", "thread stopped");
+    journal.close();
 }
 
 void gateway_thread(LocalBus& bus) 
@@ -296,6 +330,6 @@ int main()
     log(LogLevel::Info, "threaded_runtime", "shutdown complete");
 
     stop_async_logger();
-    
+
     return 0;
 }

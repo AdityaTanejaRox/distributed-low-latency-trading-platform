@@ -21,6 +21,7 @@ add_library(llt_core
     src/node.cpp
     src/threading.cpp
     src/tcp_transport.cpp
+    src/journal.cpp
 )
 
 target_include_directories(llt_core PUBLIC include)
@@ -59,3 +60,6 @@ target_link_libraries(threaded_runtime PRIVATE llt_core)
 
 add_executable(tcp_transport_demo apps/tcp_transport_demo.cpp)
 target_link_libraries(tcp_transport_demo PRIVATE llt_core)
+
+add_executable(journal_demo apps/journal_demo.cpp)
+target_link_libraries(journal_demo PRIVATE llt_core)
