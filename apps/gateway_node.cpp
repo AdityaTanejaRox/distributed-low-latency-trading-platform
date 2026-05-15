@@ -2,6 +2,8 @@
 #include "llt/logging.hpp"
 #include "llt/tcp_transport.hpp"
 #include "llt/threading.hpp"
+#include "llt/replay.hpp"
+#include "llt/time.hpp"
 
 using namespace llt;
 
@@ -32,6 +34,14 @@ int main()
     ExchangeGateway gateway{4};
     Sequence response_seq = 0;
 
+    ReplayWriter replay_writer{
+        "journals/replay_gateway.bin",
+        ReplayWriteMode::Truncate,
+        NodeRole::Gateway
+    };
+
+    replay_writer.open();
+
     while (true) {
         auto maybe_msg = conn.recv_envelope();
 
@@ -46,12 +56,15 @@ int main()
 
         auto response = gateway.send_order(maybe_msg->payload.new_order);
 
+        replay_writer.append(*response, ++response_seq, now_ns());
+
         if (response) {
-            conn.send_envelope(*response, ++response_seq);
+            conn.send_envelope(*response, response_seq);
             log(LogLevel::Info, "gateway_node", "processed NewOrder and returned Ack/Reject");
         }
     }
 
+    replay_writer.close();
     stop_async_logger();
     return 0;
 }

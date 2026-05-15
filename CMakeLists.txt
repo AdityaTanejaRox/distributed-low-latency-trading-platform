@@ -99,5 +99,11 @@ target_link_libraries(live_market_data_runtime PRIVATE llt_core)
 add_executable(kraken_futures_demo_order apps/kraken_futures_demo_order.cpp)
 target_link_libraries(kraken_futures_demo_order PRIVATE llt_core)
 
-add_executable(replay_demo apps/replay_demo.cpp)
-target_link_libraries(replay_demo PRIVATE llt_core)
+add_executable(replay_run apps/replay_run.cpp)
+target_link_libraries(replay_run PRIVATE llt_core)
+
+add_executable(replay_merge apps/replay_merge.cpp)
+target_link_libraries(replay_merge PRIVATE llt_core)
+
+add_executable(replay_timeline apps/replay_timeline.cpp)
+target_link_libraries(replay_timeline PRIVATE llt_core)

@@ -3,6 +3,8 @@
 #include "llt/order_book.hpp"
 #include "llt/tcp_transport.hpp"
 #include "llt/threading.hpp"
+#include "llt/replay.hpp"
+#include "llt/time.hpp"
 
 #include <chrono>
 #include <cstdlib>
@@ -48,6 +50,14 @@ int main(int argc, char** argv)
     TopOfBook book;
     Sequence outbound_seq = 0;
 
+    ReplayWriter replay_writer{
+        "journals/replay_market_data.bin",
+        ReplayWriteMode::Truncate,
+        NodeRole::MarketData
+    };
+
+    replay_writer.open();
+
     auto callback = [&](const NormalizedMarketData& md) {
         const auto& u = md.update;
 
@@ -67,7 +77,13 @@ int main(int argc, char** argv)
         env.type = MsgType::MarketData;
         env.payload.market_data = u;
 
-        if (!strategy_conn.send_envelope(env, ++outbound_seq)) {
+        replay_writer.append(
+            env,
+            ++outbound_seq,
+            now_ns()
+        );
+
+        if (!strategy_conn.send_envelope(env, outbound_seq)) {
             log(LogLevel::Error, "market_data_node", "failed to send MarketDataUpdate to strategy");
         }
     };
@@ -83,6 +99,8 @@ int main(int argc, char** argv)
         stop_async_logger();
         return 1;
     }
+
+    replay_writer.close();
 
     stop_async_logger();
     return 0;

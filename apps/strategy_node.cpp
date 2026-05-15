@@ -2,6 +2,8 @@
 #include "llt/strategy.hpp"
 #include "llt/tcp_transport.hpp"
 #include "llt/threading.hpp"
+#include "llt/replay.hpp"
+#include "llt/time.hpp"
 
 #include <chrono>
 #include <thread>
@@ -50,6 +52,15 @@ int main()
     TcpConnection md_conn = std::move(*maybe_md);
 
     StrategyEngine strategy{2};
+
+    ReplayWriter replay_writer{
+        "journals/replay_strategy.bin",
+        ReplayWriteMode::Truncate,
+        NodeRole::Strategy
+    };
+
+    replay_writer.open();
+
     Sequence signal_seq = 0;
 
     while (true) {
@@ -74,10 +85,18 @@ int main()
         signal_env.type = MsgType::Signal;
         signal_env.payload.signal = *maybe_signal;
 
-        if (oms_conn.send_envelope(signal_env, ++signal_seq)) {
+        replay_writer.append(
+            signal_env,
+            ++signal_seq,
+            now_ns()
+        );
+
+        if (oms_conn.send_envelope(signal_env, signal_seq)) {
             log(LogLevel::Info, "strategy_node", "sent Signal to OMS");
         }
     }
+
+    replay_writer.close();
 
     stop_async_logger();
     return 0;

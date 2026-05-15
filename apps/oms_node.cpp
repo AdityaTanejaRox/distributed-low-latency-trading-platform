@@ -3,6 +3,8 @@
 #include "llt/oms.hpp"
 #include "llt/tcp_transport.hpp"
 #include "llt/threading.hpp"
+#include "llt/replay.hpp"
+#include "llt/time.hpp"
 
 #include <chrono>
 #include <thread>
@@ -65,6 +67,16 @@ int main()
     Sequence journal_seq = 0;
     Sequence gateway_seq = 0;
 
+    ReplayWriter replay_writer{
+        "journals/replay_oms.bin",
+        ReplayWriteMode::Truncate,
+        NodeRole::OMS
+    };
+
+    replay_writer.open();
+
+    Sequence replay_seq = 0;
+
     while (true) {
         auto maybe_msg = strategy_conn.recv_envelope();
 
@@ -89,6 +101,7 @@ int main()
         }
 
         journal.append(JournalRecordType::OrderIntent, *maybe_order, ++journal_seq);
+        replay_writer.append(*maybe_order, ++replay_seq, now_ns());
 
         if (!gateway_conn.send_envelope(*maybe_order, ++gateway_seq)) {
             log(LogLevel::Error, "oms_node", "failed to send order to gateway");
@@ -96,6 +109,8 @@ int main()
         }
 
         auto maybe_response = gateway_conn.recv_envelope();
+
+        replay_writer.append(*maybe_response, ++replay_seq, now_ns());
 
         if (!maybe_response) {
             log(LogLevel::Error, "oms_node", "gateway disconnected before response");
@@ -113,6 +128,7 @@ int main()
         }
     }
 
+    replay_writer.close();
     journal.close();
     stop_async_logger();
     return 0;

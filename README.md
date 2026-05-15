@@ -3165,16 +3165,6 @@ Gateway
 Ack
 ```
 
-This verified:
-
-- TCP communication across containers
-- Docker service discovery
-- live market data propagation
-- strategy execution
-- OMS journaling
-- gateway ACK path
-```
-
 This verifies:
 
 - multi-process deployment
@@ -3189,23 +3179,86 @@ The platform now behaves as an actual distributed trading system rather than a s
 
 ---
 
-## Phase 6: Deterministic Replay
+## Phase 6: Distributed Deterministic Replay
 
-Persist all inbound market data and all strategy/OMS decisions.
+Phase 6 adds distributed replay and audit reconstruction.
 
-Then add a replay binary:
+Each node writes its own replay file:
 
-```bash
-./build/replay --input journal.bin
+```text
+market_data_node → journals/replay_market_data.bin
+strategy_node    → journals/replay_strategy.bin
+oms_node         → journals/replay_oms.bin
+gateway_node     → journals/replay_gateway.bin
 ```
 
-The replay should produce the same order decisions as the live system.
+These files are then merged offline into one ordered event timeline:
 
-This is one of the strongest signals of deterministic design.
+```bash
+./build/replay_merge journals/replay_merged.bin \
+  journals/replay_market_data.bin \
+  journals/replay_strategy.bin \
+  journals/replay_oms.bin \
+  journals/replay_gateway.bin
+```
+
+The merged file can be viewed with:
+
+```bash
+./build/replay_timeline journals/replay_merged.bin | head -200
+```
+
+Observed replay generation:
+
+```text
+Replay complete
+events_read=356
+market_data_events=356
+signals_generated=108
+orders_generated=108
+acks_generated=108
+rejects_generated=0
+```
+
+Observed distributed replay files:
+
+```text
+journals/replay_gateway.bin      4.8K
+journals/replay_market_data.bin   11K
+journals/replay_oms.bin          9.5K
+journals/replay_strategy.bin     4.8K
+```
+
+Observed merge:
+
+```text
+merged_events=862
+output=journals/replay_merged.bin
+```
+
+Sample merged timeline:
+
+```text
+34182055639146 | MarketData | seq=1 | MarketData symbol=BTC-USD bid=8092001 ask=8092057
+34182055779846 | Strategy   | seq=1 | Signal side=BUY px=8092002 qty=1
+34182069277029 | OMS        | seq=1 | NewOrder clOrdId=1 side=BUY px=8092002 qty=1
+34182069470686 | Gateway    | seq=1 | Ack clOrdId=1 exchOrderId=1000
+34182083778697 | OMS        | seq=2 | Ack clOrdId=1 exchOrderId=1000
+```
+
+This verifies:
+
+- real live market data was captured
+- each node recorded its own events
+- replay logs were merged by timestamp and sequence
+- full packet/event lifecycle reconstruction works
+- strategy, OMS, gateway, and ACK flow can be audited after the run
+
+Phase 6 provides the foundation for deterministic debugging, crash analysis, post-trade audit, and replay-based verification.
 
 ---
 
-### Phase 7: Metrics and Observability
+## Phase 7: Metrics and Observability
 
 Add counters for:
 
