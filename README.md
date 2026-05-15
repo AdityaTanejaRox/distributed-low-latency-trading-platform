@@ -3410,6 +3410,157 @@ Phase 7 completes the observability layer and makes the platform measurable inst
 
 ---
 
+---
+
+## Phase 8–10: Live Kill Switch, Multi-Symbol Books, and Multi-Venue Routing
+
+Phases 8–10 extend the platform from a single-symbol distributed pipeline into a live multi-symbol, multi-venue routing runtime.
+
+The runtime consumes real public market data from:
+
+```text
+Binance
+Coinbase
+Hyperliquid
+```
+
+Across multiple symbols:
+
+```text
+BTC
+ETH
+SOL
+```
+
+It maintains per-venue, per-symbol top-of-book state, evaluates best bid/ask routing decisions, and records runtime state through logs, metrics, replay files, and journals.
+
+Architecture:
+
+```text
+Binance BTC/ETH/SOL
+Coinbase BTC/ETH/SOL
+Hyperliquid BTC/ETH/SOL
+        ↓
+Live WebSocket Connectors
+        ↓
+Venue Normalizers
+        ↓
+MultiVenueRouter
+        ↓
+Per-Venue / Per-Symbol Top-of-Book
+        ↓
+Best Ask / Best Bid Route Decision
+        ↓
+Kill Switch Check
+        ↓
+Replay + Journal + Metrics + Logs
+```
+
+Implemented:
+
+- live multi-symbol market data ingestion
+- live multi-venue book state
+- best ask routing for BUY decisions
+- best bid routing for SELL decisions
+- manual kill switch using `controls/HALT`
+- replay capture
+- binary journal capture
+- JSONL metrics
+- async logs
+
+Run bounded test:
+
+```bash
+LLT_MAX_UPDATES_PER_STREAM=50 ./build/live_multi_venue_router
+```
+
+Run continuous mode:
+
+```bash
+./build/live_multi_venue_router
+```
+
+Trigger manual kill switch:
+
+```bash
+mkdir -p controls
+touch controls/HALT
+```
+
+Remove manual kill switch:
+
+```bash
+rm controls/HALT
+```
+
+Inspect metrics:
+
+```bash
+tail -n 5 metrics/live_multi_venue_router.jsonl
+```
+
+Inspect artifacts:
+
+```bash
+ls -lh journals/live_multi_venue_router_*.bin
+```
+
+Observed bounded runtime output:
+
+```text
+updates=100 routes=200 books=9
+venue=Binance symbol=ETHUSDT bid=62226300 ask=63226300 seq=75940420473
+venue=Binance symbol=SOLUSDT bid=60009100 ask=61009100 seq=28911285945
+venue=Binance symbol=BTCUSDT bid=32084700 ask=33084700 seq=93726349575
+venue=Hyperliquid symbol=ETH bid=226260 ask=226270 seq=1778829774871
+venue=Hyperliquid symbol=SOL bid=9625 ask=9629 seq=1778829774871
+venue=Hyperliquid symbol=BTC bid=8079900 ask=8080000 seq=1778829774871
+venue=Coinbase symbol=SOL-USD bid=9680 ask=9700 seq=29148856154
+venue=Coinbase symbol=ETH-USD bid=226290 ask=226291 seq=97748136016
+venue=Coinbase symbol=BTC-USD bid=8084482 ask=8084483 seq=128208850324
+
+updates=200 routes=400 books=9
+venue=Hyperliquid symbol=BTC bid=8081600 ask=8081700 seq=1778829776985
+venue=Hyperliquid symbol=ETH bid=226260 ask=226270 seq=1778829776985
+venue=Hyperliquid symbol=SOL bid=9646 ask=9647 seq=1778829776985
+venue=Coinbase symbol=BTC-USD bid=8084482 ask=8084645 seq=128208853015
+venue=Coinbase symbol=ETH-USD bid=226309 ask=226321 seq=97748137624
+venue=Coinbase symbol=SOL-USD bid=9690 ask=9700 seq=29148857752
+```
+
+Observed journal/replay artifacts:
+
+```text
+-rw-rw-r-- 1 aditya aditya 629K journals/live_multi_venue_router_journal.bin
+-rw-r--r-- 1 aditya aditya 600K journals/live_multi_venue_router_replay.bin
+```
+
+What this phase proves:
+
+- the system can ingest multiple live venues simultaneously
+- the system can maintain multiple symbols at the same time
+- routing decisions are made from live top-of-book state
+- runtime state is persisted through journals and replay files
+- observability exists through logs and metrics
+- a manual kill switch can disable routing decisions
+
+Current caveats:
+
+- Binance routing should be treated cautiously until its JSON price extraction is tightened further.
+- `controls/HALT` disables routing logic but does not yet interrupt blocked WebSocket reads.
+- Continuous mode may require killing the process externally if connector threads are blocked in socket reads.
+- This is still not colocated HFT infrastructure; it is a realistic distributed trading-systems simulation using live public market data.
+
+Phase 8–10 complete the project’s advanced extension path:
+
+```text
+Phase 8  → Kill switch / runtime safety
+Phase 9  → Multi-symbol market state
+Phase 10 → Multi-venue live routing
+```
+
+---
+
 ## Why This Is Relevant to HFT
 
 HFT systems care about:
