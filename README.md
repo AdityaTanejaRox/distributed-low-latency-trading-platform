@@ -422,37 +422,78 @@ Production risk would also include:
 ```text
 distributed-low-latency-trading-platform/
 ├── CMakeLists.txt
+├── Dockerfile
+├── docker-compose.yml
+├── .dockerignore
 ├── README.md
 ├── apps/
+│   ├── binance_live_md.cpp
+│   ├── coinbase_live_md.cpp
 │   ├── gateway_node.cpp
+│   ├── hyperliquid_live_md.cpp
+│   ├── itch_feed_generator.cpp
+│   ├── itch_live_md.cpp
+│   ├── journal_demo.cpp
+│   ├── kraken_futures_demo_order.cpp
+│   ├── live_market_data_runtime.cpp
+│   ├── market_data_adapter_demo.cpp
 │   ├── market_data_node.cpp
+│   ├── metrics_report.cpp
 │   ├── oms_node.cpp
+│   ├── replay_demo.cpp
+│   ├── replay_merge.cpp
+│   ├── replay_run.cpp
+│   ├── replay_timeline.cpp
 │   ├── simulator.cpp
-│   └── strategy_node.cpp
-├── configs/
-│   └── sample_config.yaml
+│   ├── strategy_node.cpp
+│   ├── tcp_transport_demo.cpp
+│   └── threaded_runtime.cpp
 ├── include/
 │   └── llt/
 │       ├── exchange_gateway.hpp
+│       ├── https_client.hpp
+│       ├── journal.hpp
+│       ├── kraken_futures_demo_gateway.hpp
+│       ├── live_market_data_connectors.hpp
 │       ├── logging.hpp
+│       ├── market_data_adapter.hpp
 │       ├── message_bus.hpp
+│       ├── metrics.hpp
 │       ├── node.hpp
 │       ├── oms.hpp
 │       ├── order_book.hpp
+│       ├── replay.hpp
 │       ├── risk.hpp
 │       ├── spsc_queue.hpp
 │       ├── strategy.hpp
+│       ├── tcp_transport.hpp
+│       ├── threading.hpp
 │       ├── time.hpp
-│       └── types.hpp
-└── src/
-    ├── exchange_gateway.cpp
-    ├── logging.cpp
-    ├── node.cpp
-    ├── oms.cpp
-    ├── order_book.cpp
-    ├── risk.cpp
-    ├── strategy.cpp
-    └── time.cpp
+│       ├── transport_config.hpp
+│       ├── types.hpp
+│       └── ws_client.hpp
+├── src/
+│   ├── exchange_gateway.cpp
+│   ├── https_client.cpp
+│   ├── journal.cpp
+│   ├── kraken_futures_demo_gateway.cpp
+│   ├── live_market_data_connectors.cpp
+│   ├── logging.cpp
+│   ├── market_data_adapter.cpp
+│   ├── metrics.cpp
+│   ├── node.cpp
+│   ├── oms.cpp
+│   ├── order_book.cpp
+│   ├── replay.cpp
+│   ├── risk.cpp
+│   ├── strategy.cpp
+│   ├── tcp_transport.cpp
+│   ├── threading.cpp
+│   ├── time.cpp
+│   └── ws_client.cpp
+├── journals/
+├── logs/
+└── metrics/
 ```
 
 ---
@@ -462,6 +503,69 @@ distributed-low-latency-trading-platform/
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
+```
+
+---
+
+## Run Single-Process Runtime
+```bash
+./build/threaded_runtime
+```
+
+---
+
+## Run Live Market Data Connectors
+```bash
+./build/binance_live_md
+./build/coinbase_live_md
+./build/hyperliquid_live_md
+```
+
+---
+
+## Run Distributed Docker Runtime
+Start:
+```bash
+docker compose up --build
+```
+
+Stop:
+```bash
+docker compose down
+```
+
+---
+
+## Metrics
+```bash
+./build/metrics_report
+```
+
+---
+
+## Replay
+```bash
+./build/replay_merge journals/replay_merged.bin \
+  journals/replay_market_data.bin \
+  journals/replay_strategy.bin \
+  journals/replay_oms.bin \
+  journals/replay_gateway.bin
+
+./build/replay_timeline journals/replay_merged.bin | head -200
+```
+
+---
+
+## Kraken Futures Demo Gateway
+Set credentials first:
+```bash
+export KRAKEN_FUTURES_DEMO_API_KEY="..."
+export KRAKEN_FUTURES_DEMO_API_SECRET="..."
+```
+
+Run:
+```bash
+./build/kraken_futures_demo_order
 ```
 
 ---
@@ -484,7 +588,7 @@ Expected output:
 
 ---
 
-## Run Individual Node Placeholders
+## Run Individual Node
 
 ```bash
 ./build/market_data_node
@@ -492,10 +596,6 @@ Expected output:
 ./build/oms_node
 ./build/gateway_node
 ```
-
-These binaries currently act as placeholders for a future multi-process deployment.
-
-The full working path is implemented in `simulator.cpp`.
 
 ---
 
