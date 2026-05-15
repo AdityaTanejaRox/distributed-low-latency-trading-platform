@@ -29,6 +29,7 @@ add_library(llt_core
     src/https_client.cpp    
     src/kraken_futures_demo_gateway.cpp
     src/replay.cpp
+    src/metrics.cpp
 )
 
 target_include_directories(llt_core PUBLIC include)
@@ -107,3 +108,6 @@ target_link_libraries(replay_merge PRIVATE llt_core)
 
 add_executable(replay_timeline apps/replay_timeline.cpp)
 target_link_libraries(replay_timeline PRIVATE llt_core)
+
+add_executable(metrics_report apps/metrics_report.cpp)
+target_link_libraries(metrics_report PRIVATE llt_core)

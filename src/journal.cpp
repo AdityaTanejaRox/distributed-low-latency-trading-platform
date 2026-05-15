@@ -1,6 +1,7 @@
 #include "llt/journal.hpp"
 #include "llt/logging.hpp"
 #include "llt/time.hpp"
+#include "llt/metrics.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -198,6 +199,7 @@ namespace llt
         }
 
         log(LogLevel::Info, "journal", "appended journal record");
+        metric_inc(MetricCounter::JournalWrites);
         return true;
     }
 

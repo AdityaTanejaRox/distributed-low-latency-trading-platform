@@ -1,5 +1,6 @@
 #include "llt/replay.hpp"
 #include "llt/logging.hpp"
+#include "llt/metrics.hpp"
 
 #include <fcntl.h>
 #include <unistd.h>
@@ -164,6 +165,8 @@ namespace llt
             return false;
         }
 
+        metric_inc(MetricCounter::ReplayEventsWritten);
+
         return true;
     }
 
@@ -233,6 +236,8 @@ namespace llt
             log(LogLevel::Error, "replay", "replay checksum mismatch");
             return std::nullopt;
         }
+
+        metric_inc(MetricCounter::ReplayEventsRead);
 
         return event;
     }

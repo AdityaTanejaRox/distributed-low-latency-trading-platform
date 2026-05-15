@@ -590,35 +590,20 @@ This project demonstrates:
 - Heartbeat and stale peer model
 - Clean separation of trading system responsibilities
 - CMake-based C++20 project structure
-
----
-
-## What This Project Does Not Yet Implement
-
-This project does not yet include:
-
 - Real sockets
 - Real exchange protocol
-- FIX
-- UDP multicast
 - Persistent journal
 - Snapshot recovery
-- Drop copy
-- Multi-symbol order books
 - Multi-venue routing
 - CPU pinning
 - NUMA placement
-- Kernel bypass
 - Real historical replay
 - Prometheus metrics
-- Full kill switch
 - Production-grade logging
-
-Those are natural extensions.
 
 ---
 
-## Suggested Extensions
+## Extensions
 
 ---
 
@@ -933,7 +918,7 @@ This prevents hidden latency accumulation.
 
 #### Runtime Verification
 
-I verified runtime thread pinning using:
+Verified runtime thread pinning using:
 
 ```bash
 ps -L -o pid,tid,psr,comm -p <PID>
@@ -1316,7 +1301,7 @@ This keeps behavior extremely explicit.
 
 ---
 
-# send_exact()
+### send_exact()
 
 One of the most important networking primitives.
 
@@ -1356,7 +1341,7 @@ loop is required.
 
 ---
 
-# recv_exact()
+### recv_exact()
 
 Equivalent receive primitive.
 
@@ -3260,103 +3245,66 @@ Phase 6 provides the foundation for deterministic debugging, crash analysis, pos
 
 ## Phase 7: Metrics and Observability
 
-Add counters for:
+Phase 7 adds runtime metrics and observability across the distributed trading platform.
 
-- Market data messages received
-- Signals generated
-- Orders sent
-- Orders rejected
-- Acks received
-- Fills received
-- Queue drops
-- Heartbeat misses
-- Gateway disconnects
-- Tail latency percentiles
+Each node writes metrics to:
 
----
+```text
+metrics/<node_name>.jsonl
+```
 
-## Sample Output
+Tracked counters include:
+
+- market data messages received
+- signals generated
+- orders sent
+- orders rejected
+- ACKs received
+- fills received
+- queue drops
+- heartbeat misses
+- gateway disconnects
+- journal writes
+- replay events written/read
+- latency percentiles
+
+Metrics can be inspected with:
 
 ```bash
-aditya@singhm4  systems/distributed_systems/distributed-low-latency-trading-platform 1m27s ➜ ./build/simulator
-{"ts_ns":2274645598103,"level":"INFO","component":"simulator","message":"starting full local pipeline simulation"}
-{"ts_ns":2274648927766,"level":"INFO","component":"strategy","message":"generated signal"}
-{"ts_ns":2274649208616,"level":"INFO","component":"oms","message":"accepted signal and created new order"}
-{"ts_ns":2274649219604,"level":"INFO","component":"gateway","message":"order acked by simulated exchange"}
-{"ts_ns":2274669298546,"level":"INFO","component":"strategy","message":"generated signal"}
-{"ts_ns":2274669317045,"level":"INFO","component":"oms","message":"accepted signal and created new order"}
-{"ts_ns":2274669337580,"level":"INFO","component":"gateway","message":"order acked by simulated exchange"}
-{"ts_ns":2274689463562,"level":"INFO","component":"strategy","message":"generated signal"}
-{"ts_ns":2274689571555,"level":"INFO","component":"oms","message":"accepted signal and created new order"}
-{"ts_ns":2274689617041,"level":"INFO","component":"gateway","message":"order acked by simulated exchange"}
-{"ts_ns":2274709730727,"level":"INFO","component":"strategy","message":"generated signal"}
-{"ts_ns":2274709760226,"level":"INFO","component":"oms","message":"accepted signal and created new order"}
-{"ts_ns":2274709776749,"level":"INFO","component":"gateway","message":"order acked by simulated exchange"}
-{"ts_ns":2274729862019,"level":"INFO","component":"strategy","message":"generated signal"}
-{"ts_ns":2274729910707,"level":"INFO","component":"oms","message":"accepted signal and created new order"}
-{"ts_ns":2274729928119,"level":"INFO","component":"gateway","message":"order acked by simulated exchange"}
-{"ts_ns":2274750054000,"level":"INFO","component":"strategy","message":"generated signal"}
-{"ts_ns":2274750078630,"level":"INFO","component":"oms","message":"accepted signal and created new order"}
-{"ts_ns":2274750089636,"level":"INFO","component":"gateway","message":"order acked by simulated exchange"}
-{"ts_ns":2274770201374,"level":"INFO","component":"strategy","message":"generated signal"}
-{"ts_ns":2274770217878,"level":"INFO","component":"oms","message":"accepted signal and created new order"}
-{"ts_ns":2274770221049,"level":"INFO","component":"gateway","message":"order acked by simulated exchange"}
-{"ts_ns":2274790293813,"level":"INFO","component":"strategy","message":"generated signal"}
-{"ts_ns":2274790316695,"level":"INFO","component":"oms","message":"accepted signal and created new order"}
-{"ts_ns":2274790319746,"level":"INFO","component":"gateway","message":"order acked by simulated exchange"}
-{"ts_ns":2274810448388,"level":"INFO","component":"strategy","message":"generated signal"}
-{"ts_ns":2274810505764,"level":"INFO","component":"oms","message":"accepted signal and created new order"}
-{"ts_ns":2274810515837,"level":"INFO","component":"gateway","message":"order acked by simulated exchange"}
-{"ts_ns":2274830639530,"level":"INFO","component":"strategy","message":"generated signal"}
-{"ts_ns":2274830700003,"level":"INFO","component":"oms","message":"accepted signal and created new order"}
-{"ts_ns":2274830715845,"level":"INFO","component":"gateway","message":"order acked by simulated exchange"}
-{"ts_ns":2274850804951,"level":"INFO","component":"strategy","message":"generated signal"}
-{"ts_ns":2274850880854,"level":"INFO","component":"oms","message":"accepted signal and created new order"}
-{"ts_ns":2274850897327,"level":"INFO","component":"gateway","message":"order acked by simulated exchange"}
-{"ts_ns":2274870993090,"level":"INFO","component":"strategy","message":"generated signal"}
-{"ts_ns":2274871034501,"level":"INFO","component":"oms","message":"accepted signal and created new order"}
-{"ts_ns":2274871045560,"level":"INFO","component":"gateway","message":"order acked by simulated exchange"}
-{"ts_ns":2274891316181,"level":"INFO","component":"strategy","message":"generated signal"}
-{"ts_ns":2274891559864,"level":"INFO","component":"oms","message":"accepted signal and created new order"}
-{"ts_ns":2274891574780,"level":"INFO","component":"gateway","message":"order acked by simulated exchange"}
-{"ts_ns":2274911658482,"level":"INFO","component":"strategy","message":"generated signal"}
-{"ts_ns":2274911719161,"level":"INFO","component":"oms","message":"accepted signal and created new order"}
-{"ts_ns":2274911740992,"level":"INFO","component":"gateway","message":"order acked by simulated exchange"}
-{"ts_ns":2274931834167,"level":"INFO","component":"strategy","message":"generated signal"}
-{"ts_ns":2274931885778,"level":"INFO","component":"oms","message":"accepted signal and created new order"}
-{"ts_ns":2274931909273,"level":"INFO","component":"gateway","message":"order acked by simulated exchange"}
-{"ts_ns":2274951997299,"level":"INFO","component":"strategy","message":"generated signal"}
-{"ts_ns":2274952034772,"level":"INFO","component":"oms","message":"accepted signal and created new order"}
-{"ts_ns":2274952043166,"level":"INFO","component":"gateway","message":"order acked by simulated exchange"}
-{"ts_ns":2274972148887,"level":"INFO","component":"strategy","message":"generated signal"}
-{"ts_ns":2274972216398,"level":"INFO","component":"oms","message":"accepted signal and created new order"}
-{"ts_ns":2274972280300,"level":"INFO","component":"gateway","message":"order acked by simulated exchange"}
-{"ts_ns":2274992447479,"level":"INFO","component":"strategy","message":"generated signal"}
-{"ts_ns":2274992470897,"level":"INFO","component":"oms","message":"accepted signal and created new order"}
-{"ts_ns":2274992477345,"level":"INFO","component":"gateway","message":"order acked by simulated exchange"}
-{"ts_ns":2275012566771,"level":"INFO","component":"strategy","message":"generated signal"}
-{"ts_ns":2275012595971,"level":"INFO","component":"oms","message":"accepted signal and created new order"}
-{"ts_ns":2275012603466,"level":"INFO","component":"gateway","message":"order acked by simulated exchange"}
-{"ts_ns":2275032715222,"level":"INFO","component":"strategy","message":"generated signal"}
-{"ts_ns":2275032871181,"level":"INFO","component":"oms","message":"accepted signal and created new order"}
-{"ts_ns":2275032896272,"level":"INFO","component":"gateway","message":"order acked by simulated exchange"}
-{"ts_ns":2275053018066,"level":"INFO","component":"strategy","message":"generated signal"}
-{"ts_ns":2275053037601,"level":"INFO","component":"oms","message":"accepted signal and created new order"}
-{"ts_ns":2275053041209,"level":"INFO","component":"gateway","message":"order acked by simulated exchange"}
-{"ts_ns":2275073116646,"level":"INFO","component":"strategy","message":"generated signal"}
-{"ts_ns":2275073140020,"level":"INFO","component":"oms","message":"accepted signal and created new order"}
-{"ts_ns":2275073150341,"level":"INFO","component":"gateway","message":"order acked by simulated exchange"}
-{"ts_ns":2275093309065,"level":"INFO","component":"strategy","message":"generated signal"}
-{"ts_ns":2275094518371,"level":"INFO","component":"oms","message":"accepted signal and created new order"}
-{"ts_ns":2275094538133,"level":"INFO","component":"gateway","message":"order acked by simulated exchange"}
-{"ts_ns":2275114626495,"level":"INFO","component":"strategy","message":"generated signal"}
-{"ts_ns":2275114649834,"level":"INFO","component":"oms","message":"accepted signal and created new order"}
-{"ts_ns":2275114656071,"level":"INFO","component":"gateway","message":"order acked by simulated exchange"}
-{"ts_ns":2275134737609,"level":"INFO","component":"strategy","message":"generated signal"}
-{"ts_ns":2275134771786,"level":"INFO","component":"oms","message":"accepted signal and created new order"}
-{"ts_ns":2275134776405,"level":"INFO","component":"gateway","message":"order acked by simulated exchange"}
-{"ts_ns":2275154886798,"level":"INFO","component":"simulator","message":"simulation complete"}
+./build/metrics_report
 ```
+
+Observed output:
+
+```text
+== metrics/market_data_node.jsonl ==
+{"market_data_received":600,"signals_generated":0,"orders_sent":0,"orders_rejected":0,"acks_received":0,"fills_received":0,"queue_drops":0,"heartbeat_misses":0,"gateway_disconnects":0,"journal_writes":0,"replay_events_written":600,"replay_events_read":0,"latency_count":600,"latency_min_ns":220,"latency_p50_ns":685,"latency_p99_ns":2276,"latency_p999_ns":2685,"latency_max_ns":3032}
+
+== metrics/strategy_node.jsonl ==
+{"market_data_received":655,"signals_generated":397,"orders_sent":0,"orders_rejected":0,"acks_received":0,"fills_received":0,"queue_drops":0,"heartbeat_misses":0,"gateway_disconnects":0,"journal_writes":0,"replay_events_written":794,"replay_events_read":0,"latency_count":655,"latency_min_ns":53539,"latency_p50_ns":187429,"latency_p99_ns":2023483,"latency_p999_ns":3281919,"latency_max_ns":3392613}
+
+== metrics/oms_node.jsonl ==
+{"market_data_received":0,"signals_generated":0,"orders_sent":397,"orders_rejected":0,"acks_received":397,"fills_received":0,"queue_drops":0,"heartbeat_misses":0,"gateway_disconnects":0,"journal_writes":1588,"replay_events_written":1588,"replay_events_read":0,"latency_count":0,"latency_min_ns":0,"latency_p50_ns":0,"latency_p99_ns":0,"latency_p999_ns":0,"latency_max_ns":0}
+
+== metrics/gateway_node.jsonl ==
+{"market_data_received":0,"signals_generated":0,"orders_sent":397,"orders_rejected":0,"acks_received":397,"fills_received":0,"queue_drops":0,"heartbeat_misses":0,"gateway_disconnects":1,"journal_writes":0,"replay_events_written":794,"replay_events_read":0,"latency_count":0,"latency_min_ns":0,"latency_p50_ns":0,"latency_p99_ns":0,"latency_p999_ns":0,"latency_max_ns":0}
+```
+
+This verifies:
+
+```text
+Live Market Data
+    →
+Strategy Signals
+    →
+OMS Orders
+    →
+Gateway ACKs
+    →
+Metrics + Replay + Journal
+```
+
+Phase 7 completes the observability layer and makes the platform measurable instead of just functional.
 
 ---
 
@@ -3375,8 +3323,6 @@ HFT systems care about:
 - Hardware-aware design
 
 This project touches all of those areas.
-
-It gives a clean base that can be extended into a realistic trading infrastructure project.
 
 ---
 

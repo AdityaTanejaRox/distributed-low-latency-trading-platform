@@ -1,9 +1,10 @@
 #include "llt/live_market_data_connectors.hpp"
 #include "llt/logging.hpp"
+#include "llt/metrics.hpp"
 #include "llt/order_book.hpp"
+#include "llt/replay.hpp"
 #include "llt/tcp_transport.hpp"
 #include "llt/threading.hpp"
-#include "llt/replay.hpp"
 #include "llt/time.hpp"
 
 #include <chrono>
@@ -61,6 +62,14 @@ int main(int argc, char** argv)
     auto callback = [&](const NormalizedMarketData& md) {
         const auto& u = md.update;
 
+        metric_inc(MetricCounter::MarketDataReceived);
+
+        const TimestampNs now = now_ns();
+
+        if (u.header.recv_ts_ns > 0 && now >= u.header.recv_ts_ns) {
+            metric_latency(now - u.header.recv_ts_ns);
+        }
+
         book.apply(u);
 
         if (auto snapshot = book.snapshot()) {
@@ -77,13 +86,14 @@ int main(int argc, char** argv)
         env.type = MsgType::MarketData;
         env.payload.market_data = u;
 
-        replay_writer.append(
-            env,
-            ++outbound_seq,
-            now_ns()
-        );
+        replay_writer.append(env, ++outbound_seq, now_ns());
+
+        if (outbound_seq % 100 == 0) {
+            MetricsRegistry::instance().write_jsonl("metrics/market_data_node.jsonl");
+        }
 
         if (!strategy_conn.send_envelope(env, outbound_seq)) {
+            metric_inc(MetricCounter::QueueDrops);
             log(LogLevel::Error, "market_data_node", "failed to send MarketDataUpdate to strategy");
         }
     };
@@ -96,10 +106,13 @@ int main(int argc, char** argv)
         run_hyperliquid_live_l2book("BTC", 0, callback);
     } else {
         log(LogLevel::Error, "market_data_node", "unknown LLT_VENUE");
+        MetricsRegistry::instance().write_jsonl("metrics/market_data_node.jsonl");
+        replay_writer.close();
         stop_async_logger();
         return 1;
     }
 
+    MetricsRegistry::instance().write_jsonl("metrics/market_data_node.jsonl");
     replay_writer.close();
 
     stop_async_logger();

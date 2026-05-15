@@ -6,6 +6,7 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./journals:/app/journals
+      - ./metrics:/app/metrics
     networks:
       llt_net:
         aliases:
@@ -20,6 +21,7 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./journals:/app/journals
+      - ./metrics:/app/metrics
     networks:
       llt_net:
         aliases:
@@ -34,6 +36,7 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./journals:/app/journals
+      - ./metrics:/app/metrics
     networks:
       llt_net:
         aliases:
@@ -50,6 +53,7 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./journals:/app/journals
+      - ./metrics:/app/metrics
     networks:
       llt_net:
         aliases:

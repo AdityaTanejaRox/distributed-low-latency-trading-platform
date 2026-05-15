@@ -1,8 +1,9 @@
 #include "llt/exchange_gateway.hpp"
 #include "llt/logging.hpp"
+#include "llt/metrics.hpp"
+#include "llt/replay.hpp"
 #include "llt/tcp_transport.hpp"
 #include "llt/threading.hpp"
-#include "llt/replay.hpp"
 #include "llt/time.hpp"
 
 using namespace llt;
@@ -18,6 +19,7 @@ int main()
 
     if (!server.listen_on(21003)) {
         log(LogLevel::Error, "gateway_node", "failed to listen");
+        MetricsRegistry::instance().write_jsonl("metrics/gateway_node.jsonl");
         stop_async_logger();
         return 1;
     }
@@ -26,6 +28,7 @@ int main()
 
     if (!maybe_conn) {
         log(LogLevel::Error, "gateway_node", "failed to accept OMS connection");
+        MetricsRegistry::instance().write_jsonl("metrics/gateway_node.jsonl");
         stop_async_logger();
         return 1;
     }
@@ -46,6 +49,7 @@ int main()
         auto maybe_msg = conn.recv_envelope();
 
         if (!maybe_msg) {
+            metric_inc(MetricCounter::GatewayDisconnects);
             log(LogLevel::Warn, "gateway_node", "OMS disconnected");
             break;
         }
@@ -54,17 +58,40 @@ int main()
             continue;
         }
 
+        metric_inc(MetricCounter::OrdersSent);
+
         auto response = gateway.send_order(maybe_msg->payload.new_order);
 
-        replay_writer.append(*response, ++response_seq, now_ns());
+        if (!response) {
+            metric_inc(MetricCounter::OrdersRejected);
+            log(LogLevel::Error, "gateway_node", "gateway failed to produce response");
+            continue;
+        }
 
-        if (response) {
-            conn.send_envelope(*response, response_seq);
+        replay_writer.append(*response, ++response_seq, now_ns());
+        metric_inc(MetricCounter::ReplayEventsWritten);
+
+        if (response->type == MsgType::Ack) {
+            metric_inc(MetricCounter::AcksReceived);
+        } else if (response->type == MsgType::Reject) {
+            metric_inc(MetricCounter::OrdersRejected);
+        } else if (response->type == MsgType::Fill) {
+            metric_inc(MetricCounter::FillsReceived);
+        }
+
+        if (conn.send_envelope(*response, response_seq)) {
             log(LogLevel::Info, "gateway_node", "processed NewOrder and returned Ack/Reject");
+        } else {
+            metric_inc(MetricCounter::GatewayDisconnects);
+            metric_inc(MetricCounter::QueueDrops);
+            log(LogLevel::Error, "gateway_node", "failed to send response to OMS");
+            break;
         }
     }
 
+    MetricsRegistry::instance().write_jsonl("metrics/gateway_node.jsonl");
     replay_writer.close();
+
     stop_async_logger();
     return 0;
 }
