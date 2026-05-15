@@ -1,3 +1,5 @@
+> **Proprietary Notice:** This repository is private and proprietary. No license is granted for use, copying, modification, redistribution, or commercial deployment without explicit written permission from the author.
+
 # Distributed Low-Latency Trading Platform
 
 ## Overview
