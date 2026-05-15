@@ -2985,19 +2985,211 @@ Phase 4 is complete.
 
 ## Phase 5: Real Exchange Gateway
 
-Add an exchange gateway.
+Phase 5 introduces a real exchange gateway capable of authenticated order submission instead of simulated exchange responses.
 
-Possible protocols:
+Architecture:
 
-- REST for simple testing
-- WebSocket for crypto venues
-- FIX for traditional venues
+```text
+Strategy
+    →
+OMS
+    →
+Gateway
+    →
+Exchange API
+```
 
-The gateway should convert internal `NewOrder` messages into exchange-native messages.
+The gateway converts internal `NewOrder` messages into venue-native requests and maps exchange responses back into internal ACK / Reject messages.
+
+Implemented:
+
+- HTTPS client using Boost.Beast + TLS
+- authenticated REST request flow
+- HMAC request signing
+- environment-based API credentials
+- exchange response handling
+- internal-to-external order translation
+
+Current implementation targets:
+
+```text
+Kraken Futures Demo
+```
+
+Environment variables:
+
+```bash
+export KRAKEN_FUTURES_DEMO_API_KEY="..."
+export KRAKEN_FUTURES_DEMO_API_SECRET="..."
+```
+
+Run:
+
+```bash
+./build/kraken_futures_demo_order
+```
+
+Expected flow:
+
+```text
+internal NewOrder
+      →
+signed exchange request
+      →
+exchange ACK / Reject
+      →
+OMS update
+```
+
+This phase establishes the external exchange boundary and replaces mock execution with real authenticated venue connectivity.
 
 ---
 
-### Phase 6: Deterministic Replay
+## Phase 5.5: Distributed Node Deployment + Docker Runtime
+
+Earlier phases ran the entire trading platform inside a single process:
+
+```text
+MarketData
+    →
+Strategy
+    →
+OMS
+    →
+Gateway
+```
+
+While useful for development, a single process does not provide:
+
+- fault isolation
+- process isolation
+- independent deployment
+- realistic distributed behavior
+- node restarts
+- network failure handling
+
+Phase 5.5 converts the platform into independent deployable services.
+
+Architecture:
+
+```text
+market_data_node
+        |
+        | TCP
+        ↓
+strategy_node
+        |
+        | TCP
+        ↓
+oms_node
+        |
+        | TCP
+        ↓
+gateway_node
+```
+
+Each node now runs as its own process and communicates using the TCP transport layer built earlier.
+
+CPU pinning:
+
+```text
+market_data_node → core 0
+strategy_node    → core 1
+oms_node         → core 2
+gateway_node     → core 3
+```
+
+Docker Compose was added so the entire distributed system can be launched with a single command rather than manually opening multiple terminals.
+
+Run:
+
+```bash
+docker compose up --build
+```
+
+Shutdown:
+
+```bash
+docker compose down
+```
+
+Live market data continues to flow from Coinbase / Hyperliquid / Binance into the distributed pipeline.
+
+Observed runtime flow:
+
+```text
+market_data_node
+→ normalized live Coinbase ticker
+
+strategy_node
+→ sent Signal to OMS
+
+oms_node
+→ appended journal record
+→ journaled and processed gateway Ack
+
+gateway_node
+→ processed NewOrder and returned Ack/Reject
+```
+
+### Runtime Verification
+
+Observed distributed runtime logs:
+
+```text
+market_data_node
+→ normalized live Coinbase ticker
+
+strategy_node
+→ sent Signal to OMS
+
+oms_node
+→ appended journal record
+→ journaled and processed gateway Ack
+
+gateway_node
+→ processed NewOrder and returned Ack/Reject
+```
+
+Observed full pipeline:
+
+```text
+Live Market Data
+    →
+Strategy Signal
+    →
+OMS Risk + Journal
+    →
+Gateway
+    →
+Ack
+```
+
+This verified:
+
+- TCP communication across containers
+- Docker service discovery
+- live market data propagation
+- strategy execution
+- OMS journaling
+- gateway ACK path
+```
+
+This verifies:
+
+- multi-process deployment
+- TCP service-to-service communication
+- live market data ingestion
+- strategy signal generation
+- OMS journaling
+- gateway acknowledgements
+- Docker-based orchestration
+
+The platform now behaves as an actual distributed trading system rather than a single-process simulation.
+
+---
+
+## Phase 6: Deterministic Replay
 
 Persist all inbound market data and all strategy/OMS decisions.
 
