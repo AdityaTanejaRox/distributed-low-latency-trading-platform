@@ -30,6 +30,9 @@ add_library(llt_core
     src/kraken_futures_demo_gateway.cpp
     src/replay.cpp
     src/metrics.cpp
+    src/kill_switch.cpp
+    src/multi_symbol_order_book.cpp
+    src/multi_venue_router.cpp
 )
 
 target_include_directories(llt_core PUBLIC include)
@@ -111,3 +114,15 @@ target_link_libraries(replay_timeline PRIVATE llt_core)
 
 add_executable(metrics_report apps/metrics_report.cpp)
 target_link_libraries(metrics_report PRIVATE llt_core)
+
+add_executable(kill_switch_demo apps/kill_switch_demo.cpp)
+target_link_libraries(kill_switch_demo PRIVATE llt_core)
+
+add_executable(multi_symbol_book_demo apps/multi_symbol_book_demo.cpp)
+target_link_libraries(multi_symbol_book_demo PRIVATE llt_core)
+
+add_executable(multi_venue_router_demo apps/multi_venue_router_demo.cpp)
+target_link_libraries(multi_venue_router_demo PRIVATE llt_core)
+
+add_executable(live_multi_venue_router apps/live_multi_venue_router.cpp)
+target_link_libraries(live_multi_venue_router PRIVATE llt_core)

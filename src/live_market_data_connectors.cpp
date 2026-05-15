@@ -43,7 +43,8 @@ namespace llt
     bool run_binance_live_book_ticker(
         const std::string& symbol_lower,
         int max_updates,
-        MarketDataCallback callback
+        MarketDataCallback callback,
+        SymbolId symbol_id
     )
     {
         const std::string target = "/ws/" + symbol_lower + "@bookTicker";
@@ -70,7 +71,7 @@ namespace llt
                 break;
             }
 
-            auto md = normalize_binance_book_ticker(raw, 1);
+            auto md = normalize_binance_book_ticker(raw, symbol_id);
 
             if (!md)
             {
@@ -91,7 +92,8 @@ namespace llt
     bool run_coinbase_live_ticker(
         const std::string& product_id,
         int max_updates,
-        MarketDataCallback callback
+        MarketDataCallback callback,
+        SymbolId symbol_id
     )
     {
         WssClient client{"ws-feed.exchange.coinbase.com", "443", "/"};
@@ -128,7 +130,7 @@ namespace llt
                 break;
             }
 
-            auto md = normalize_coinbase_ticker(raw, 2);
+            auto md = normalize_coinbase_ticker(raw, symbol_id);
 
             if (!md)
             {
@@ -151,7 +153,8 @@ namespace llt
     bool run_hyperliquid_live_l2book(
         const std::string& coin,
         int max_updates,
-        MarketDataCallback callback
+        MarketDataCallback callback,
+        SymbolId symbol_id
     )
     {
         WssClient client{"api.hyperliquid.xyz", "443", "/ws"};
@@ -188,7 +191,7 @@ namespace llt
                 break;
             }
 
-            auto md = normalize_hyperliquid_l2book(raw, 3);
+            auto md = normalize_hyperliquid_l2book(raw, symbol_id);
 
             if (!md)
             {

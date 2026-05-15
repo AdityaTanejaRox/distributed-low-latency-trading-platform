@@ -177,8 +177,18 @@ int main()
             }
         }
 
-        response.header.sequence = ++response_seq;
-        response.header.send_ts_ns = now_ns();
+        ++response_seq;
+
+        if (response.type == MsgType::Ack) {
+            response.payload.ack.header.sequence = response_seq;
+            response.payload.ack.header.send_ts_ns = now_ns();
+        } else if (response.type == MsgType::Reject) {
+            response.payload.reject.header.sequence = response_seq;
+            response.payload.reject.header.send_ts_ns = now_ns();
+        } else if (response.type == MsgType::Fill) {
+            response.payload.fill.header.sequence = response_seq;
+            response.payload.fill.header.send_ts_ns = now_ns();
+        }
 
         replay_writer.append(response, response_seq, now_ns());
 
