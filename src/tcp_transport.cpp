@@ -5,6 +5,7 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <netdb.h>
 #include <netinet/tcp.h>
 
 #include <cerrno>
@@ -351,7 +352,7 @@ namespace llt
 
             sockaddr_in addr{};
             addr.sin_family = AF_INET;
-            addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+            addr.sin_addr.s_addr = htonl(INADDR_ANY);
             addr.sin_port = htons(port);
 
             if (::bind(listen_fd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) 
@@ -410,44 +411,49 @@ namespace llt
         std::optional<TcpConnection> TcpClient::connect_to(
             const std::string& host,
             std::uint16_t port
-        ) {
-            const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+        ) 
+        {
+            addrinfo hints{};
+            hints.ai_family = AF_INET;
+            hints.ai_socktype = SOCK_STREAM;
 
-            if (fd < 0) 
-            {
-                log(LogLevel::Error, "tcp_client", "failed to create socket");
+            addrinfo* results = nullptr;
+
+            const std::string port_str = std::to_string(port);
+
+            if (::getaddrinfo(host.c_str(), port_str.c_str(), &hints, &results) != 0) {
+                log(LogLevel::Error, "tcp_client", "getaddrinfo failed");
                 return std::nullopt;
             }
 
-            sockaddr_in addr{};
-            addr.sin_family = AF_INET;
-            addr.sin_port = htons(port);
+            int fd = -1;
 
-            int flag = 1;
+            for (addrinfo* rp = results; rp != nullptr; rp = rp->ai_next) {
+                fd = ::socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
 
-            ::setsockopt(
-                fd,
-                IPPROTO_TCP,
-                TCP_NODELAY,
-                &flag,
-                sizeof(flag)
-            );
+                if (fd < 0) {
+                    continue;
+                }
 
-            if (::inet_pton(AF_INET, host.c_str(), &addr.sin_addr) != 1) 
-            {
+                if (::connect(fd, rp->ai_addr, rp->ai_addrlen) == 0) {
+                    break;
+                }
+
                 ::close(fd);
-                log(LogLevel::Error, "tcp_client", "invalid host address");
-                return std::nullopt;
+                fd = -1;
             }
 
-            if (::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) 
-            {
-                ::close(fd);
+            ::freeaddrinfo(results);
+
+            if (fd < 0) {
                 log(LogLevel::Error, "tcp_client", "connect failed");
                 return std::nullopt;
             }
 
+            int flag = 1;
+            ::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
+
             log(LogLevel::Info, "tcp_client", "connected to TCP server");
             return TcpConnection{fd};
-    }
+        }
 }

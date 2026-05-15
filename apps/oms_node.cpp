@@ -1,8 +1,119 @@
+#include "llt/journal.hpp"
 #include "llt/logging.hpp"
+#include "llt/oms.hpp"
+#include "llt/tcp_transport.hpp"
+#include "llt/threading.hpp"
 
-int main() 
+#include <chrono>
+#include <thread>
+
+using namespace llt;
+
+static TcpConnection connect_retry(const std::string& host, std::uint16_t port)
 {
-    llt::log(llt::LogLevel::Info, "oms_node", "standalone OMS node placeholder");
-    llt::log(llt::LogLevel::Info, "oms_node", "in production this would enforce risk, dedupe orders, persist intent, and route to gateways");
+    while (true) {
+        auto conn = TcpClient::connect_to(host, port);
+
+        if (conn) {
+            return std::move(*conn);
+        }
+
+        log(LogLevel::Warn, "oms_node", "gateway unavailable; retrying");
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+}
+
+int main()
+{
+    start_async_logger("logs/oms_node.log");
+    pin_current_thread_to_cpu(2, "oms-node");
+
+    log(LogLevel::Info, "oms_node", "starting distributed OMS node on port 21002");
+
+    TcpConnection gateway_conn = connect_retry("gateway-node", 21003);
+
+    TcpServer server;
+
+    if (!server.listen_on(21002)) {
+        log(LogLevel::Error, "oms_node", "failed to listen for strategy");
+        stop_async_logger();
+        return 1;
+    }
+
+    auto maybe_strategy = server.accept_one();
+
+    if (!maybe_strategy) {
+        log(LogLevel::Error, "oms_node", "failed to accept strategy connection");
+        stop_async_logger();
+        return 1;
+    }
+
+    TcpConnection strategy_conn = std::move(*maybe_strategy);
+
+    OrderManager oms{
+        3,
+        RiskLimits{
+            .max_position = 10,
+            .max_order_qty = 2,
+            .max_notional = 100'000'000
+        }
+    };
+
+    JournalWriter journal{"journals/distributed_oms.bin"};
+    journal.open();
+
+    Sequence journal_seq = 0;
+    Sequence gateway_seq = 0;
+
+    while (true) {
+        auto maybe_msg = strategy_conn.recv_envelope();
+
+        if (!maybe_msg) {
+            log(LogLevel::Warn, "oms_node", "strategy disconnected");
+            break;
+        }
+
+        if (maybe_msg->type != MsgType::Signal) {
+            continue;
+        }
+
+        auto maybe_order = oms.on_signal(maybe_msg->payload.signal);
+
+        if (!maybe_order) {
+            continue;
+        }
+
+        if (maybe_order->type == MsgType::Reject) {
+            log(LogLevel::Warn, "oms_node", "signal rejected by OMS risk");
+            continue;
+        }
+
+        journal.append(JournalRecordType::OrderIntent, *maybe_order, ++journal_seq);
+
+        if (!gateway_conn.send_envelope(*maybe_order, ++gateway_seq)) {
+            log(LogLevel::Error, "oms_node", "failed to send order to gateway");
+            break;
+        }
+
+        auto maybe_response = gateway_conn.recv_envelope();
+
+        if (!maybe_response) {
+            log(LogLevel::Error, "oms_node", "gateway disconnected before response");
+            break;
+        }
+
+        if (maybe_response->type == MsgType::Ack) {
+            oms.on_gateway_ack(maybe_response->payload.ack);
+            journal.append(JournalRecordType::GatewayAck, *maybe_response, ++journal_seq);
+            log(LogLevel::Info, "oms_node", "journaled and processed gateway Ack");
+        } else if (maybe_response->type == MsgType::Reject) {
+            oms.on_gateway_reject(maybe_response->payload.reject);
+            journal.append(JournalRecordType::GatewayReject, *maybe_response, ++journal_seq);
+            log(LogLevel::Warn, "oms_node", "journaled and processed gateway Reject");
+        }
+    }
+
+    journal.close();
+    stop_async_logger();
     return 0;
 }

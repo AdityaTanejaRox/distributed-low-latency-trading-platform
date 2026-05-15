@@ -1,0 +1,60 @@
+services:
+  gateway_node:
+    build: .
+    container_name: llt_gateway_node
+    command: ["./build/gateway_node"]
+    volumes:
+      - ./logs:/app/logs
+      - ./journals:/app/journals
+    networks:
+      llt_net:
+        aliases:
+          - gateway-node
+
+  oms_node:
+    build: .
+    container_name: llt_oms_node
+    command: ["./build/oms_node"]
+    depends_on:
+      - gateway_node
+    volumes:
+      - ./logs:/app/logs
+      - ./journals:/app/journals
+    networks:
+      llt_net:
+        aliases:
+          - oms-node
+
+  strategy_node:
+    build: .
+    container_name: llt_strategy_node
+    command: ["./build/strategy_node"]
+    depends_on:
+      - oms_node
+    volumes:
+      - ./logs:/app/logs
+      - ./journals:/app/journals
+    networks:
+      llt_net:
+        aliases:
+          - strategy-node
+
+  market_data_node:
+    build: .
+    container_name: llt_market_data_node
+    command: ["./build/market_data_node"]
+    environment:
+      - LLT_VENUE=coinbase
+    depends_on:
+      - strategy_node
+    volumes:
+      - ./logs:/app/logs
+      - ./journals:/app/journals
+    networks:
+      llt_net:
+        aliases:
+          - market-data-node
+
+networks:
+  llt_net:
+    driver: bridge
