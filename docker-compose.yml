@@ -3,6 +3,11 @@ services:
     build: .
     container_name: llt_gateway_node
     command: ["./build/gateway_node"]
+    environment:
+      - LLT_GATEWAY_MODE=kraken
+      - LLT_KRAKEN_SYMBOL=PI_XBTUSD
+      - KRAKEN_FUTURES_DEMO_API_KEY=${KRAKEN_FUTURES_DEMO_API_KEY}
+      - KRAKEN_FUTURES_DEMO_API_SECRET=${KRAKEN_FUTURES_DEMO_API_SECRET}
     volumes:
       - ./logs:/app/logs
       - ./journals:/app/journals
