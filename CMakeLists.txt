@@ -26,6 +26,8 @@ add_library(llt_core
     src/market_data_adapter.cpp
     src/ws_client.cpp
     src/live_market_data_connectors.cpp
+    src/https_client.cpp    
+    src/kraken_futures_demo_gateway.cpp
 )
 
 target_include_directories(llt_core PUBLIC include)
@@ -92,3 +94,6 @@ target_link_libraries(itch_live_md PRIVATE llt_core)
 
 add_executable(live_market_data_runtime apps/live_market_data_runtime.cpp)
 target_link_libraries(live_market_data_runtime PRIVATE llt_core)
+
+add_executable(kraken_futures_demo_order apps/kraken_futures_demo_order.cpp)
+target_link_libraries(kraken_futures_demo_order PRIVATE llt_core)
